@@ -18,9 +18,10 @@ function formMachines() {
 const checkRow = (id) => (state.machines?.rows || []).find((m) => String(m.equipment_id) === String(id));
 const currentEq = () => (qf.eq === "__other" ? $("#qfEqOther").value.trim() : qf.eq);
 
+// sorted by recipe number (rows without a recipe last)
 function recipeRows() {
-  const rank = (s) => (s.startsWith("NG") ? 0 : s.startsWith("WARN") ? 1 : 2);
-  return [...(state.recipes?.rows || [])].sort((a, b) => rank(a.status) - rank(b.status) || (a.recipe_id ?? 0) - (b.recipe_id ?? 0));
+  const n = (r) => (r.recipe_id == null ? Infinity : r.recipe_id);
+  return [...(state.recipes?.rows || [])].sort((a, b) => n(a) - n(b) || a.material_id - b.material_id);
 }
 const recipeKey = (r) => `${r.recipe_id ?? ""}|${r.material_id}`;
 
@@ -34,10 +35,13 @@ async function renderQuickFix() {
   await loadLookups();
 
   // ---- recipe form
-  if (!rows.some((r) => recipeKey(r) === qf.recipe)) qf.recipe = recipeKey(rows[0]);
+  if (!rows.some((r) => recipeKey(r) === qf.recipe)) qf.recipe = recipeKey(rows.find((r) => r.status.startsWith("NG")) || rows[0]);
+  // plain names in the dropdown; the material is added only when a recipe has several
+  const perRecipe = rows.reduce((m, r) => m.set(r.recipe_id, (m.get(r.recipe_id) || 0) + 1), new Map());
   $("#qfRecipe").innerHTML = rows.map((r) =>
     `<option value="${esc(recipeKey(r))}"${recipeKey(r) === qf.recipe ? " selected" : ""}>` +
-    `Recipe ${esc(r.recipe_id ?? "—")} · material ${r.material_id} · ${r.wip_tires} tire${r.wip_tires == 1 ? "" : "s"} · ${esc(r.status)}</option>`).join("");
+    (r.recipe_id == null ? `Material ${r.material_id}`
+      : `Recipe ${esc(r.recipe_id)}${perRecipe.get(r.recipe_id) > 1 ? ` (material ${r.material_id})` : ""}`) + `</option>`).join("");
   await renderRecipePart();
 
   // ---- DBM form: every DBM machine, even without a rim
@@ -48,12 +52,9 @@ async function renderQuickFix() {
     const first = list.find((m) => (checkRow(m.equipment_id)?.status || "").match(/^(NG|WARN)/)) || list[0];
     qf.eq = String(first?.equipment_id ?? "");
   }
-  $("#qfEq").innerHTML = list.map((m) => {
-    const chk = checkRow(m.equipment_id);
-    const flag = chk && chk.status !== "OK" ? ` · ${chk.status}` : !["ACTIVE", "UNIVERSAL"].includes(m.rim_status) ? ` · ${m.rim_status}` : "";
-    return `<option value="${m.equipment_id}"${String(m.equipment_id) === qf.eq ? " selected" : ""}>` +
-      `${label} ${m.equipment_id} · ${esc(m.running_rim ?? "no rim set")}${esc(flag)}</option>`;
-  }).join("") + `<option value="__other"${qf.eq === "__other" ? " selected" : ""}>Other ${label} (enter number)…</option>`;
+  $("#qfEq").innerHTML = list.map((m) =>
+    `<option value="${m.equipment_id}"${String(m.equipment_id) === qf.eq ? " selected" : ""}>${label} ${m.equipment_id}</option>`).join("")
+    + `<option value="__other"${qf.eq === "__other" ? " selected" : ""}>Other ${label}…</option>`;
   $("#qfEqOtherWrap").hidden = qf.eq !== "__other";
   const sugg = (state.machines?.rows || []).filter((m) => m.suggested_rim);
   $("#qfSuggest").innerHTML = sugg.length

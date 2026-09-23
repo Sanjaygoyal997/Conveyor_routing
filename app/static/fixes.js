@@ -125,18 +125,14 @@ $("#fixDialog").addEventListener("close", () => (currentDialog = null));
 
 const dis = () => (CONFIG.writes_enabled ? "" : " disabled title=\"Editing is switched off on this server\"");
 const pillHtml = (s) => (s ? `<span class="pill ${pillClass(s === "ACTIVE" ? "OK" : s === "INACTIVE" || s === "NOT SET" ? "NG" : s)}">${esc(s)}</span>` : "");
+// dropdown options show the rim name only; details are shown next to the dropdown
 function rimOptions(rims, selectedKey) {
-  return rims.map((r) => {
-    const d = demandOf(r.rim_key);
-    const hint = d ? ` · ${d.wip_tires} WIP tires accept${d.blocked_tires ? `, ${d.blocked_tires} blocked` : ""}` : "";
-    const area = r.local_area_id != null ? ` · ${r.area_name || "area " + r.local_area_id}` : "";
-    const special = r.rim_key === "NONE" ? " · not available" : r.rim_key === "UNIVERSALRIM" ? " · takes any tire" : "";
-    return `<option value="${r.rim_id}"${r.rim_key === selectedKey ? " selected" : ""}>${esc(r.name)}${area}${special}${hint}</option>`;
-  }).join("");
+  return rims.map((r) =>
+    `<option value="${r.rim_id}"${r.rim_key === selectedKey ? " selected" : ""}>${esc(r.name)}</option>`).join("");
 }
 function equipmentOptions(filter = () => true) {
   return RUNNING.filter(filter).map((e) =>
-    `<option value="${e.equipment_id}">${e.equipment_id} · running ${esc(e.rim_name ?? "not set")}</option>`).join("");
+    `<option value="${e.equipment_id}">${e.equipment_id}</option>`).join("");
 }
 
 // ---- material: mapped rims, add rim, change over equipment --------------------
