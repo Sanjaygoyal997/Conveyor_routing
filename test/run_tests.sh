@@ -141,10 +141,13 @@ check "UniversalRIM row in rim demand" \
   "SELECT status || ':' || wip_tires FROM master.fn_wip_rim_demand(p_wip_states => '{1}') WHERE rim_size = 'UNIVERSALRIM'" "INFO_UNIVERSAL:7"
 "${PSQL[@]}" -c "UPDATE master.runningsize_lookup SET rim_size = '5' WHERE equipment_id = 505"
 
-if python3 -c "import fastapi, psycopg, httpx" 2>/dev/null; then
-    DATABASE_URL="dbname=$DB" python3 test/test_api.py || fail=1
+if command -v dotnet >/dev/null; then
+    API_OUT=$(mktemp -d)
+    dotnet build backend/ConveyorRouting.Api -p:Tfm=${API_TFM:-net8.0} -o "$API_OUT" -v q -nologo >/dev/null
+    API_DLL="$API_OUT/ConveyorRouting.Api.dll" DB="$DB" python3 test/test_api.py || fail=1
+    rm -rf "$API_OUT"
 else
-    echo "SKIP  API tests (pip install -r requirements.txt httpx)"
+    echo "SKIP  API tests (dotnet not installed)"
 fi
 
 dropdb "$DB"

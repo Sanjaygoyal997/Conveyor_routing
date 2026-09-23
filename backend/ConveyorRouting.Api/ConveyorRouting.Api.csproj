@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    Same platform as SmartMES_ReportAPI: ASP.NET Core on net5.0.
+    To move to .NET 8 (LTS) build with -p:Tfm=net8.0 or change the default below.
+  -->
+  <PropertyGroup>
+    <Tfm Condition="'$(Tfm)' == ''">net5.0</Tfm>
+    <TargetFramework>$(Tfm)</TargetFramework>
+    <RootNamespace>ConveyorRouting.Api</RootNamespace>
+    <Nullable>disable</Nullable>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Npgsql" Version="8.0.7" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="5.6.3" />
+  </ItemGroup>
+
+  <!-- ASP.NET Core package versions follow the target framework -->
+  <ItemGroup Condition="'$(Tfm)' == 'net5.0'">
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="5.0.17" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="5.0.17" />
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="6.36.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.36.0" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(Tfm)' == 'net8.0'">
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="8.0.11" />
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="7.1.2" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.1.2" />
+  </ItemGroup>
+
+</Project>

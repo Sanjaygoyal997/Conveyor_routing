@@ -17,21 +17,59 @@ the same tables the conveyor reads, so they apply to the next scanned tire.
 
 ## Web UI
 
-```bash
-pip install -r requirements.txt
-export DATABASE_URL="postgresql://user:password@dbhost:5432/dbname"   # or PGHOST/PGUSER/...
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-# open http://<server>:8000
+The UI is a **React** app (`frontend/`, Vite) served by an **ASP.NET Core** API (`backend/ConveyorRouting.Api`).
+The API follows the conventions of SmartMES_ReportAPI:
+- the same platform (`net5.0`, Npgsql, Newtonsoft, Swagger)
+- Controllers → Services → Repositories, with interfaces under `Interfaces/`
+- `IDbOperations`
+- the `OEMResponse {statusCode, data, message, error}` envelope
+- JWT from `/api/Auth/getToken` using the same `JwtSecret:Key`
+- the `AllowOrigin` CORS policy
+
+```
+backend/ConveyorRouting.Api/
+  Controllers/    RimValidationController (reads), RimFixController (fixes), AuthController (getToken)
+  Services/       RimValidationService, RimFixService (write guard), ServiceCall (-> OEMResponse)
+  Repositories/   RimValidationRepository (calls master.fn_*), RimFixRepository (one transaction + audit row per fix)
+  Data/           DbOperations (Npgsql; reads in READ ONLY transactions), Sql (typed parameters)
+  Interfaces/     ICommon / IRepository / IServices
+  wwwroot/        React build output (npm run build), served with a fallback to index.html
+frontend/src/
+  App.jsx         filters, summary, tabs, write/confirm flow
+  components/     QuickFix, DataTable, FixDialogs (material / equipment / rim), BarcodeCheck, AuditLog, Dialogs
+  tables.jsx      columns and Fix… buttons per tab
 ```
 
-Load `sql/*.sql` into the database first (`05_audit.sql` creates `master.rim_validation_audit`).
-Validation queries run in read-only transactions. Fixes are **off unless you switch them on**:
+### Build and deploy
 
-| Env var | Default | Meaning |
+```bash
+# 1. database: load sql/*.sql (05_audit.sql creates master.rim_validation_audit)
+# 2. UI -> backend/ConveyorRouting.Api/wwwroot
+cd frontend && npm ci && npm run build
+# 3. API (+ UI), same hosting as SmartMES_ReportAPI (ASP.NET Core 5 runtime / IIS hosting bundle)
+cd ../backend/ConveyorRouting.Api && dotnet publish -c Release -o ../../publish
+#    on .NET 8 (LTS) instead:        dotnet publish -c Release -p:Tfm=net8.0 -o ../../publish
+```
+
+Development: run the API (`dotnet run` in `backend/ConveyorRouting.Api`, http://localhost:5080) and the UI
+(`npm run dev` in `frontend`, http://localhost:3000). Vite forwards `/api` to the API. Swagger is at `/swagger`.
+
+### Settings (`appsettings.json`, or environment variables such as `RimValidation__AllowWrites=true`)
+
+| Setting | Default | Meaning |
 |---|---|---|
-| `ALLOW_WRITES` | `false` | `true` lets the **Fix…** dialogs change master data (otherwise they are view-only) |
-| `ADMIN_TOKEN` | *(unset)* | If set, every change must send this token (the UI asks for it once per browser session) |
-| `RIM_SIZE_VALUE` | `rim_id` | What is written into `rim_size` columns: `rim_master.rim_id`, or `name` |
+| `ConnectionStrings:SmartMes` | – | PostgreSQL connection string. Don't commit the real password; set it on the server |
+| `JwtSecret:Key` | – | Same key as SmartMES_ReportAPI (32+ characters), so tokens from either API work |
+| `RimValidation:RequireJwt` | `true` | Require a JWT on every `/api` call (the UI gets one from `/api/Auth/getToken`) |
+| `RimValidation:AllowWrites` | `false` | `true` lets the **Fix…** dialogs change master data (otherwise they are view-only) |
+| `RimValidation:AdminToken` | *(empty)* | If set, every change must send this token (the UI asks for it once per browser session) |
+| `RimValidation:RimSizeValue` | `rim_id` | What is written into `rim_size` columns: `rim_master.rim_id`, or `name` |
+| `RimValidation:StatementTimeoutSeconds` | `60` | Timeout per SQL statement |
+| `Cors:Origins` | `http://localhost:3000` | Origins allowed to call the API from another host |
+
+`/api/Auth/getToken` works the same way as in SmartMES_ReportAPI: it gives a token to anyone who can reach the API.
+So the JWT doesn't make the API safe on its own. Changes are also protected by `AllowWrites`, the operator
+name, the optional admin token, and the audit log.
 
 Every change asks for the operator's name and a confirmation. The confirmation for a changeover lists
 the WIP tires it would unblock or block. Each change runs in one transaction together with a row in
@@ -195,5 +233,7 @@ active rim; otherwise it is a **WARN**. `MSL_MULTI_RIM` (INFO) lists materials t
 
 ```bash
 test/run_tests.sh   # needs a local PostgreSQL; creates and drops a throwaway DB
-                    # also runs test/test_api.py (fix endpoints) when fastapi, psycopg and httpx are installed
+                    # when dotnet is installed it also builds the API and runs test/test_api.py:
+                    # HTTP tests of every endpoint, JWT, the write guards and the audit log
+                    # (the API is built for net8.0 by default; API_TFM=net5.0 needs the .NET 5 runtime)
 ```
