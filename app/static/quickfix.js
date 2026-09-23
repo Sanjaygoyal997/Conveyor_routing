@@ -82,8 +82,10 @@ async function renderRecipePart() {
     <div class="chips">${chips || `<span class="hint">None yet — add one below.</span>`}</div>`;
   const mapped = new Set(maps.map((m) => m.rim_name));
   const addable = activeRims().filter((x) => !mapped.has(x.rim_key) && !["NONE", "UNIVERSALRIM"].includes(x.rim_key));
-  $("#qfRecipeRim").innerHTML = rimOptions(addable) || `<option value="">No other active rims</option>`;
-  $("#qfAddRim").disabled = !addable.length || !CONFIG.writes_enabled;
+  $("#qfRecipeRim").innerHTML = addable.length ? `<option value="">Select rim…</option>` + rimOptions(addable)
+                                               : `<option value="">No other active rims</option>`;
+  $("#qfAddRim").disabled = true;   // enabled once a rim is chosen
+  renderRecipeOverview();
 }
 
 function renderMachinePart() {
@@ -126,6 +128,26 @@ function renderOverview() {
     }).join("")}</tbody></table>` : `<p class="empty">No DBMs found.</p>`;
 }
 
+// Overview of every recipe in the current WIP selection and its rims; the selected one shows the pending rim.
+function renderRecipeOverview() {
+  const rows = recipeRows();
+  const pending = RIMS.find((r) => String(r.rim_id) === $("#qfRecipeRim").value);
+  $("#qfRecipeOverviewTitle").textContent =
+    `Recipes in WIP (${$("#hours").selectedOptions[0]?.textContent.toLowerCase() || "look-back"}): current rim mapping`;
+  $("#qfRecipeOverview").innerHTML = rows.length ? `<table><thead><tr><th>Recipe</th><th class="num">WIP tires</th><th>Rims</th><th>Status</th><th>DBMs</th></tr></thead><tbody>${
+    rows.map((r) => {
+      const sel = recipeKey(r) === qf.recipe;
+      const rims = (r.allowed_rim_sizes || []).map((k) => {
+        const bad = (r.inactive_rim_sizes || []).includes(k);
+        return bad ? `<s title="inactive">${esc(rimLabel(k))}</s>` : esc(rimLabel(k));
+      }).join(", ") || "—";
+      const add = sel && pending ? ` <b>+ ${esc(pending.name)}</b>` : "";
+      const name = r.recipe_id == null ? `Material ${r.material_id}` : `Recipe ${esc(r.recipe_id)}`;
+      return `<tr class="${sel ? "qf-sel" : ""}" data-qf-recipe="${esc(recipeKey(r))}"><td>${name}</td><td class="num">${r.wip_tires}</td>` +
+        `<td class="m">${rims}${add}</td><td>${pillHtml(r.status)}</td><td class="m">${esc(fmt(r.eligible_equipment) || "—")}</td></tr>`;
+    }).join("")}</tbody></table>` : `<p class="empty">No recipes in WIP for this selection.</p>`;
+}
+
 function renderImpact() {
   const rim = RIMS.find((r) => String(r.rim_id) === $("#qfEqRim").value);
   const id = currentEq();
@@ -146,6 +168,17 @@ function openQuickFix({ recipe, eq } = {}) {
 
 // ---- events
 $("#qfRecipe").addEventListener("change", (e) => { qf.recipe = e.target.value; renderRecipePart(); });
+$("#qfRecipeRim").addEventListener("change", () => {
+  $("#qfAddRim").disabled = !$("#qfRecipeRim").value || !CONFIG.writes_enabled;
+  renderRecipeOverview();
+});
+$("#qfRecipeOverview").addEventListener("click", (ev) => {
+  const tr = ev.target.closest("[data-qf-recipe]");
+  if (!tr) return;
+  qf.recipe = tr.dataset.qfRecipe;
+  $("#qfRecipe").value = qf.recipe;
+  renderRecipePart();
+});
 $("#qfEq").addEventListener("change", (e) => { qf.eq = e.target.value; renderMachinePart(); });
 $("#qfEqOther").addEventListener("input", renderMachinePart);
 $("#qfOverview").addEventListener("click", (ev) => {
