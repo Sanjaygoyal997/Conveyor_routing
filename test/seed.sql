@@ -1,7 +1,7 @@
 -- Scenario data: one clean path plus one example of each gap.
 INSERT INTO master.users VALUES (1);
 INSERT INTO master.reason VALUES (0);
-INSERT INTO master.recipe VALUES (10), (11), (12), (13), (14), (15);
+INSERT INTO master.recipe VALUES (10), (11), (12), (13), (14), (15), (16), (17);
 
 INSERT INTO master.rim_master (id, name, isactive, rim_id, local_area_id) VALUES
     (1, '15', true, 1, 1),
@@ -12,12 +12,14 @@ INSERT INTO master.rim_master (id, name, isactive, rim_id, local_area_id) VALUES
 
 INSERT INTO master.material_size_lookup (material_id, rim_size, area_id) VALUES
     (100, '15', 1),               -- OK
-    (101, '16', 1), (101, '15', 1), -- conflicting sizes
-    (102, '17', 1),               -- inactive rim
+    (101, '16', 1), (101, '15', 1), -- two allowed rims, both running -> OK
+    (102, '17', 1),               -- only rim is inactive
     (103, '20', 1),               -- rim not in master
     (104, '19', 1),               -- no equipment running 19
     (105, '18', NULL),            -- OK via trimmed match, NULL area
-    (100, '15', 1);               -- duplicate row
+    (100, '15', 1),               -- duplicate row
+    (107, '17', 1), (107, '15', 1), -- one inactive, one running -> WARN
+    (108, '19', 1), (108, '16', 1); -- 19 not running, 16 running -> OK
 -- material 106: no mapping at all
 
 INSERT INTO master.runningsize_lookup (equipment_id, rim_size) VALUES
@@ -36,7 +38,9 @@ INSERT INTO curing.o_production
     (7, NULL,'T0008', 106, 1, 1, 0, 600, now() - interval '1 hour', 1, 1),
     (1, 10, 'T0009', 100, 1, 2, 0, 600, now() - interval '1 hour', 1, 9),   -- not WIP (state 9)
     (1, 10, 'T0010', 100, 1, 1, 0, 600, now() - interval '3 hour', 1, 1),
-    (2, 11, 'T0010', 101, 1, 1, 0, 600, now() - interval '1 hour', 1, 1);   -- duplicate barcode, other material
+    (2, 11, 'T0010', 101, 1, 1, 0, 600, now() - interval '1 hour', 1, 1),   -- duplicate barcode, other material
+    (8, 16, 'T0012', 107, 1, 1, 0, 600, now() - interval '1 hour', 1, 1),
+    (9, 17, 'T0013', 108, 1, 1, 0, 600, now() - interval '1 hour', 1, 1);
 
 -- Outside the default 2-day window: not WIP.
 INSERT INTO curing.o_production

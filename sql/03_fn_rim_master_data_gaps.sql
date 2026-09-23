@@ -23,9 +23,10 @@ prod AS (
 ),
 findings AS (
     -- material_size_lookup ---------------------------------------------------
-    SELECT 'ERROR', 'MSL_CONFLICTING_SIZE', 'material_size_lookup',
+    -- (several rim sizes per material are allowed; only real defects are flagged)
+    SELECT 'INFO', 'MSL_MULTI_RIM', 'material_size_lookup',
            'material_id=' || material_id || ', area_id=' || COALESCE(area_id::text, 'NULL'),
-           'Rim sizes: ' || string_agg(DISTINCT rim_key, ',')
+           'Accepts rim sizes ' || string_agg(DISTINCT rim_key, ',')
     FROM   msl GROUP BY material_id, area_id
     HAVING count(DISTINCT rim_key) > 1
 
@@ -47,18 +48,34 @@ findings AS (
     FROM   msl WHERE area_id IS NULL
 
     UNION ALL
-    SELECT 'ERROR', 'MSL_RIM_' || st, 'material_size_lookup', 'id=' || id,
-           'material_id=' || material_id || ' rim ' || rim_key || ' is ' || lower(st) || ' in rim_master'
-    FROM  (SELECT msl.*, master.fn_rim_status(rim_key, area_id) AS st FROM msl WHERE rim_key IS NOT NULL) x
-    WHERE  st <> 'ACTIVE'
+    -- ERROR when the material has no other active rim, WARN when it still has one
+    SELECT CASE WHEN x.has_active THEN 'WARN' ELSE 'ERROR' END,
+           'MSL_RIM_' || x.st, 'material_size_lookup', 'id=' || x.id,
+           'material_id=' || x.material_id || ' rim ' || x.rim_key || ' is ' || lower(x.st) || ' in rim_master'
+           || CASE WHEN x.has_active THEN ' (other allowed rims are active)' ELSE ' (no active rim left)' END
+    FROM  (SELECT m.*, master.fn_rim_status(m.rim_key, m.area_id) AS st,
+                  EXISTS (SELECT 1 FROM msl m2
+                          WHERE  m2.material_id = m.material_id AND m2.rim_key IS NOT NULL
+                            AND  m2.rim_key <> m.rim_key
+                            AND  master.fn_rim_status(m2.rim_key, m2.area_id) = 'ACTIVE') AS has_active
+           FROM   msl m WHERE m.rim_key IS NOT NULL) x
+    WHERE  x.st <> 'ACTIVE'
 
     UNION ALL
-    SELECT 'WARN', 'MSL_SIZE_NOT_RUNNING', 'material_size_lookup', 'rim=' || m.rim_key,
-           count(DISTINCT m.material_id) || ' material(s) need rim ' || m.rim_key || ' but no equipment is running it'
+    SELECT 'INFO', 'MSL_SIZE_NOT_RUNNING', 'material_size_lookup', 'rim=' || m.rim_key,
+           count(DISTINCT m.material_id) || ' material(s) accept rim ' || m.rim_key || ' but no equipment is running it'
     FROM   msl m
     WHERE  m.rim_key IS NOT NULL
       AND  NOT EXISTS (SELECT 1 FROM run r WHERE r.rim_key = m.rim_key)
     GROUP  BY m.rim_key
+
+    UNION ALL
+    SELECT 'WARN', 'MSL_MATERIAL_NOT_RUNNABLE', 'material_size_lookup', 'material_id=' || m.material_id,
+           'None of the allowed rims (' || string_agg(DISTINCT m.rim_key, ',') || ') is running on any equipment'
+    FROM   msl m
+    WHERE  m.rim_key IS NOT NULL
+    GROUP  BY m.material_id
+    HAVING NOT bool_or(EXISTS (SELECT 1 FROM run r WHERE r.rim_key = m.rim_key))
 
     -- runningsize_lookup -----------------------------------------------------
     UNION ALL

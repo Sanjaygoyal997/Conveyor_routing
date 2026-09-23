@@ -31,8 +31,9 @@ const TABLES = {
       { key: "recipe_id", label: "Recipe", num: true },
       { key: "material_id", label: "Material", num: true },
       { key: "wip_tires", label: "WIP tires", num: true },
-      { key: "required_rim_size", label: "Rim size" },
-      { key: "rim_master_status", label: "Rim master" },
+      { key: "allowed_rim_sizes", label: "Allowed rims" },
+      { key: "running_rim_sizes", label: "Rims running" },
+      { key: "invalid_rim_sizes", label: "Not active in rim master" },
       { key: "eligible_equipment", label: "Eligible equipment" },
       { key: "curing_presses", label: "Curing presses" },
       { key: "first_cured", label: "First cured" },
@@ -45,7 +46,8 @@ const TABLES = {
     columns: [
       { key: "status", label: "Status", pill: true },
       { key: "rim_size", label: "Rim size" },
-      { key: "wip_tires", label: "WIP tires", num: true },
+      { key: "wip_tires", label: "WIP tires accepting", num: true },
+      { key: "blocked_tires", label: "Blocked tires", num: true },
       { key: "recipes", label: "Recipes" },
       { key: "materials", label: "Materials" },
       { key: "equipment_running", label: "Equipment running" },
@@ -246,13 +248,14 @@ async function checkBarcode(ev) {
     const ok = v.length && v.every((x) => x.status === "OK");
     const first = v[0] || {};
     const equipment = v.filter((x) => x.status === "OK" && x.equipment_id != null).map((x) => x.equipment_id);
+    const rims = [...new Set(v.map((x) => x.rim_size).filter(Boolean))].join(", ");
     const headline = ok
       ? (equipment.length ? `OK: can go to equipment ${equipment.join(", ")}` : "OK")
       : `${first.status}`;
     const atDbm = r.dbm.length ? `Already balanced at DBM ${r.dbm[0].equipment_id} on ${fmt(r.dbm[0].dtandtime)}` : "Not yet at DBM (in WIP)";
     out.innerHTML = `
       <div class="result-banner ${ok ? "ok" : "ng"}">${esc(headline)}
-        <small>${esc(first.message || "")} · material ${esc(first.material_id ?? "–")} · recipe ${esc(first.recipe_id ?? "–")} · rim ${esc(first.rim_size ?? "–")} · ${esc(atDbm)}</small>
+        <small>${esc(first.message || "")} · material ${esc(first.material_id ?? "–")} · recipe ${esc(first.recipe_id ?? "–")} · rim ${esc(rims || "–")} · ${esc(atDbm)}</small>
       </div>
       <h3>Curing records</h3>${miniTable(r.curing, ["dtandtime", "equipment_id", "recipe_id", "material_id", "mould_code", "side", "quality_status", "state"])}
       <h3>DBM records</h3>${miniTable(r.dbm, ["dtandtime", "equipment_id", "model", "code", "total_rank", "ro_total"])}`;

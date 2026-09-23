@@ -45,6 +45,10 @@ Tire barcode (scanned) = curing.o_production.production_id
 
 Rim sizes are compared after `UPPER(BTRIM())` (`master.fn_rim_key`), so `"15 "` matches `"15"`.
 
+**A material can accept more than one rim size.** Every row in `material_size_lookup` for a
+material/area is an allowed rim. A tire passes when the equipment runs **any** of its allowed
+rims that is active in `rim_master`.
+
 ## Objects
 
 | File | Object | Use |
@@ -83,12 +87,17 @@ SELECT * FROM master.fn_validate_tire_barcode('T0001');       -- list eligible e
 | Status | Meaning | Fix |
 |---|---|---|
 | `NG_NO_MATERIAL_SIZE` | Material has no row in `material_size_lookup` | Add the mapping |
-| `NG_AMBIGUOUS_SIZE` | Material has more than one rim size in the area | Delete the wrong row |
-| `NG_RIM_NOT_IN_MASTER` / `NG_RIM_INACTIVE` | Required rim is missing from `rim_master`, or inactive | Add or activate it in `rim_master` |
-| `NG_NO_EQUIPMENT_RUNNING` / `NG_NOT_RUNNING` | No equipment is running the required rim | Change over equipment, or fix `runningsize_lookup` |
-| `NG_UNRESOLVED` | WIP tires whose rim size can't be determined | See the rows above in `fn_wip_rim_readiness` |
-| `INFO_NO_WIP` | Equipment is running a rim that no WIP needs | Candidate for a changeover |
-| `WARN_NO_RECIPE` | Production records have no `recipe_id` | Check the curing data capture |
+| `NG_NO_ACTIVE_RIM` | None of the material's allowed rims is active in `rim_master` | Add or activate the rim in `rim_master` |
+| `NG_NO_EQUIPMENT_RUNNING` | No equipment runs any of the material's active allowed rims | Change over equipment, or fix `runningsize_lookup` |
+| `WARN_SOME_RIMS_INVALID` | Routable, but some allowed rims are missing or inactive in `rim_master` | Clean up the mapping |
+| `NG_NOT_RUNNING` (rim sizes) | Rim not running, and some tires that accept it have no other running rim | Change over equipment to this rim |
+| `INFO_NOT_RUNNING` (rim sizes) | Rim not running, but every tire that accepts it can use another rim that is running | None needed |
+| `NG_UNRESOLVED` (rim sizes) | WIP tires with no active rim at all | See the rows above in `fn_wip_rim_readiness` |
+| `INFO_NO_WIP` | Equipment is running a rim that no WIP accepts | Candidate for a changeover |
+| `NG_SIZE_MISMATCH` (barcode) | The target equipment's rim is not one of the tire's allowed rims | Route the tire to another machine |
+
+In the gap report, a missing or inactive rim is an **ERROR** only when the material has no other
+active rim; otherwise it is a **WARN**. `MSL_MULTI_RIM` (INFO) lists materials that accept several rims.
 
 ## Assumptions / open points
 
