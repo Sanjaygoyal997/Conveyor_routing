@@ -4,7 +4,7 @@
 //   DBM     -> running rim    (runningsize_lookup): pick the DBM first, then its rim
 // Uses app.js (state, api, esc, fmt, $) and fixes.js (RIMS, RUNNING, loadLookups, activeRims, write, changeoverImpact, pillHtml).
 
-const qf = { recipe: "", eq: "", maps: [] };   // current selections survive refreshes; maps = selected recipe's rows
+const qf = { recipe: "", eq: "", maps: [], fromRim: null };   // current selections survive refreshes; maps = selected recipe's rows
 let QF_DBMS = [];                    // every DBM machine (/api/dbm-machines)
 
 // DBM area selected? Then the machine list is every DBM machine; otherwise the machine-check rows.
@@ -87,6 +87,10 @@ async function renderRecipePart() {
     ? `<option value="">Current rim…</option>` + maps.map((m) => `<option value="${m.id}">${esc(rimLabel(m.rim_name))}</option>`).join("")
     : `<option value="">No rim to change</option>`;
   $("#qfChangeTo").innerHTML = `<option value="">New rim…</option>` + rimOptions(addable);
+  const want = qf.fromRim && maps.find((m) => m.rim_name === qf.fromRim);
+  const current = want || maps.find((m) => m.rim_master_status !== "ACTIVE") || maps[0];
+  if (current) $("#qfChangeFrom").value = String(current.id);   // current rim comes up automatically
+  qf.fromRim = null;
   $("#qfChange").disabled = true;
   renderRecipeOverview();
 }
@@ -103,10 +107,17 @@ function renderMachinePart() {
     : `<p class="hint">New DBM ${esc(id)}: no rim set yet.</p>`;
   // no rim yet: start on the suggested rim, or on an empty choice (never silently on the first rim)
   const keep = $("#qfEqRim").dataset.want || (!m?.running_rim && chk?.suggested_rim_id ? String(chk.suggested_rim_id) : "");
-  $("#qfEqRim").innerHTML = (m?.running_rim ? "" : `<option value="">Select rim…</option>`) + rimOptions(activeRims(), m?.running_rim ?? null);
+  // current rim comes up automatically; if it is not in the active list (inactive / other area) show it anyway
+  const offered = activeRims();
+  // exact rim_master row of the running rim (rim_size holds the rim_id)
+  const runId = String(RUNNING.find((e) => String(e.equipment_id) === String(id))?.rim_size ?? "").trim();
+  const cur = m?.running_rim ? RIMS.find((r) => String(r.rim_id) === runId) || RIMS.find((r) => r.rim_key === m.running_rim) : null;
+  const extra = cur && !offered.some((r) => r.rim_id === cur.rim_id)
+    ? `<option value="${cur.rim_id}" selected>${esc(cur.name)} (current, ${!cur.isactive ? "inactive" : `area ${cur.area_name || cur.local_area_id}`})</option>` : "";
+  $("#qfEqRim").innerHTML = (m?.running_rim ? "" : `<option value="">Select rim…</option>`) + extra
+    + rimOptions(offered, extra ? null : m?.running_rim ?? null);
   if (keep) { $("#qfEqRim").value = keep; $("#qfEqRim").dataset.want = ""; }
   renderImpact();
-  $("#qfSetRim").disabled = !CONFIG.writes_enabled || !/^\d+$/.test(id);
 }
 
 // Overview of every DBM and its current rim; the selected one is highlighted and shows the pending change.
@@ -145,7 +156,8 @@ function renderRecipeOverview() {
       const sel = recipeKey(r) === qf.recipe;
       const rims = (r.allowed_rim_sizes || []).map((k) => {
         const bad = (r.inactive_rim_sizes || []).includes(k);
-        const txt = bad ? `<s title="inactive">${esc(rimLabel(k))}</s>` : esc(rimLabel(k));
+        const inner = bad ? `<s title="inactive">${esc(rimLabel(k))}</s>` : esc(rimLabel(k));
+        const txt = `<span class="rim-pick" data-qf-rim="${esc(k)}" title="Change this rim">${inner}</span>`;
         return sel && chFrom && chTo && chFrom.rim_name === k ? `${txt} → <b>${esc(chTo.name)}</b>` : txt;
       }).join(", ") || "—";
       const add = sel && pending ? ` <b>+ ${esc(pending.name)}</b>` : "";
@@ -160,8 +172,12 @@ function renderImpact() {
   const id = currentEq();
   const m = formMachines().find((x) => String(x.equipment_id) === id);
   $("#qfImpact").textContent = rim && /^\d+$/.test(id)
-    ? (m && rim.rim_key === m.running_rim ? "This is the rim it is running now." : changeoverImpact(id, rim.name))
+    ? (String(rim.rim_id) === String(RUNNING.find((e) => String(e.equipment_id) === String(id))?.rim_size ?? "").trim()
+        ? "This is the rim it is running now." : changeoverImpact(id, rim.name))
     : "";
+  // nothing to save until a different rim is chosen
+  const curId = String(RUNNING.find((e) => String(e.equipment_id) === String(id))?.rim_size ?? "").trim();
+  $("#qfSetRim").disabled = !CONFIG.writes_enabled || !/^\d+$/.test(id) || !rim || String(rim.rim_id) === curId;
   renderOverview();
 }
 
@@ -194,6 +210,7 @@ $("#qfRecipeOverview").addEventListener("click", (ev) => {
   const tr = ev.target.closest("[data-qf-recipe]");
   if (!tr) return;
   qf.recipe = tr.dataset.qfRecipe;
+  qf.fromRim = ev.target.closest("[data-qf-rim]")?.dataset.qfRim || null;   // clicked rim -> Change rim "current"
   $("#qfRecipe").value = qf.recipe;
   renderRecipePart();
 });

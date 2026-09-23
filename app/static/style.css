@@ -173,3 +173,5 @@ button.link { border: none; background: none; padding: 0 2px; color: var(--accen
 .qf-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .qf-row select { flex: 1 1 140px; width: auto; font-size: 14px; color: var(--text); font-weight: 400; }
 .chip button.chip-name { color: inherit; font: inherit; font-size: 13px; padding: 0; text-decoration: underline dotted; }
+.rim-pick { cursor: pointer; text-decoration: underline dotted; }
+.rim-pick:hover { color: var(--accent); }
