@@ -48,10 +48,11 @@ findings AS (
     FROM   msl WHERE area_id IS NULL
 
     UNION ALL
-    -- ERROR when the material has no other active rim, WARN when it still has one
+    -- Rim deactivated after mapping: ERROR when the material has no other
+    -- active rim, WARN when it still has one
     SELECT CASE WHEN x.has_active THEN 'WARN' ELSE 'ERROR' END,
-           'MSL_RIM_' || x.st, 'material_size_lookup', 'id=' || x.id,
-           'material_id=' || x.material_id || ' rim ' || x.rim_key || ' is ' || lower(x.st) || ' in rim_master'
+           'MSL_RIM_INACTIVE', 'material_size_lookup', 'id=' || x.id,
+           'material_id=' || x.material_id || ' rim ' || x.rim_key || ' is inactive in rim_master'
            || CASE WHEN x.has_active THEN ' (other allowed rims are active)' ELSE ' (no active rim left)' END
     FROM  (SELECT m.*, master.fn_rim_status(m.rim_key, m.area_id) AS st,
                   EXISTS (SELECT 1 FROM msl m2
@@ -84,8 +85,8 @@ findings AS (
     FROM   run WHERE rim_key IS NULL
 
     UNION ALL
-    SELECT 'ERROR', 'RUN_RIM_' || st, 'runningsize_lookup', 'equipment_id=' || equipment_id,
-           'Running rim ' || rim_key || ' is ' || lower(st) || ' in rim_master'
+    SELECT 'ERROR', 'RUN_RIM_INACTIVE', 'runningsize_lookup', 'equipment_id=' || equipment_id,
+           'Running rim ' || rim_key || ' is inactive in rim_master'
     FROM  (SELECT run.*, master.fn_rim_status(rim_key, p_area_id) AS st FROM run WHERE rim_key IS NOT NULL) x
     WHERE  st <> 'ACTIVE'
 

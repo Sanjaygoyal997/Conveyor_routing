@@ -20,7 +20,7 @@ check() {  # check <description> <sql returning text> <expected>
 check "WIP readiness per recipe/material (state 1, not yet at DBM)" \
   "SELECT string_agg(material_id || ':' || status || ':' || wip_tires, ' ' ORDER BY material_id)
    FROM master.fn_wip_rim_readiness(p_wip_states => '{1}')" \
-  "100:OK:1 101:OK:2 102:NG_NO_ACTIVE_RIM:1 103:NG_NO_ACTIVE_RIM:1 104:NG_NO_EQUIPMENT_RUNNING:1 105:OK:1 106:NG_NO_MATERIAL_SIZE:1 107:WARN_SOME_RIMS_INVALID:1 108:OK:1"
+  "100:OK:1 101:OK:2 102:NG_NO_ACTIVE_RIM:1 103:NG_NO_ACTIVE_RIM:1 104:NG_NO_EQUIPMENT_RUNNING:1 105:OK:1 106:NG_NO_MATERIAL_SIZE:1 107:WARN_SOME_RIMS_INACTIVE:1 108:OK:1"
 
 check "Including tires already at DBM" \
   "SELECT wip_tires FROM master.fn_wip_rim_readiness(p_wip_states => '{1}', p_exclude_at_dbm => false) WHERE material_id = 100" \
@@ -31,21 +31,21 @@ check "Multi-rim material: eligible on every running allowed rim" \
   "{15,16} {501,502,504}"
 
 check "Multi-rim material with one inactive rim" \
-  "SELECT invalid_rim_sizes::text || ' ' || eligible_equipment::text FROM master.fn_wip_rim_readiness(p_wip_states => '{1}') WHERE material_id = 107" \
+  "SELECT inactive_rim_sizes::text || ' ' || eligible_equipment::text FROM master.fn_wip_rim_readiness(p_wip_states => '{1}') WHERE material_id = 107" \
   "{17} {501,502}"
 
 check "WIP rim demand vs running equipment" \
   "SELECT string_agg(COALESCE(rim_size,'?') || ':' || status || ':' || wip_tires || '/' || blocked_tires, ' ' ORDER BY rim_size NULLS FIRST)
    FROM master.fn_wip_rim_demand(p_wip_states => '{1}')" \
-  "?:NG_UNRESOLVED:3/3 15:OK:4/0 16:OK:3/0 18:OK:1/0 19:NG_NOT_RUNNING:2/1 21:INFO_NO_WIP:0/0"
+  "?:NG_UNRESOLVED:3/3 15:OK:4/0 16:OK:3/0 17:INFO_NO_WIP:0/0 18:OK:1/0 19:NG_NOT_RUNNING:2/1 21:INFO_NO_WIP:0/0"
 
 check "Master data gap codes" \
   "SELECT string_agg(DISTINCT check_code, ' ') FROM master.fn_rim_master_data_gaps()" \
-  "DBM_NO_RUNNING_SIZE FORMAT_DRIFT MSL_DUPLICATE_ROW MSL_MATERIAL_NOT_RUNNABLE MSL_MULTI_RIM MSL_NULL_AREA MSL_RIM_INACTIVE MSL_RIM_MISSING MSL_SIZE_NOT_RUNNING PROD_DUPLICATE_BARCODE PROD_MATERIAL_NO_SIZE PROD_NO_RECIPE RUN_RIM_MISSING"
+  "DBM_NO_RUNNING_SIZE FORMAT_DRIFT MSL_DUPLICATE_ROW MSL_MATERIAL_NOT_RUNNABLE MSL_MULTI_RIM MSL_NULL_AREA MSL_RIM_INACTIVE MSL_SIZE_NOT_RUNNING PROD_DUPLICATE_BARCODE PROD_MATERIAL_NO_SIZE PROD_NO_RECIPE RUN_RIM_INACTIVE"
 
 check "Inactive rim is ERROR only when no other active rim" \
-  "SELECT string_agg(severity || ':' || split_part(detail, ' ', 1), ' ' ORDER BY severity) FROM master.fn_rim_master_data_gaps() WHERE check_code = 'MSL_RIM_INACTIVE'" \
-  "ERROR:material_id=102 WARN:material_id=107"
+  "SELECT string_agg(severity || ':' || split_part(detail, ' ', 1), ' ' ORDER BY severity, detail) FROM master.fn_rim_master_data_gaps() WHERE check_code = 'MSL_RIM_INACTIVE'" \
+  "ERROR:material_id=102 ERROR:material_id=103 WARN:material_id=107"
 
 check "Barcode OK on matching equipment" \
   "SELECT status FROM master.fn_validate_tire_barcode('T0001', 502)" "OK"

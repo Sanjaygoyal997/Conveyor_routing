@@ -64,7 +64,7 @@ BEGIN
 
     IF v_active IS NULL THEN
         RETURN QUERY SELECT 'NG_NO_ACTIVE_RIM',
-                            'No allowed rim is active in rim_master: ' || array_to_string(v_allowed, ','),
+                            'All allowed rims are inactive in rim_master: ' || array_to_string(v_allowed, ','),
                             v_prod.material_id, v_prod.recipe_id, array_to_string(v_allowed, ','), p_equipment_id;
         RETURN;
     END IF;

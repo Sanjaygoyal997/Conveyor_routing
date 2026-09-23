@@ -8,13 +8,15 @@ INSERT INTO master.rim_master (id, name, isactive, rim_id, local_area_id) VALUES
     (2, '16', true, 2, 1),
     (3, '17', false, 3, 1),       -- inactive rim
     (4, '18 ', true, 4, 1),       -- untrimmed name
-    (5, '19', true, 5, 1);        -- nothing runs 19
+    (5, '19', true, 5, 1),        -- nothing runs 19
+    (6, '20', false, 6, 1),       -- inactive
+    (7, '21', true, 7, 1);        -- running, no WIP needs it
 
 INSERT INTO master.material_size_lookup (material_id, rim_size, area_id) VALUES
     (100, '15', 1),               -- OK
     (101, '16', 1), (101, '15', 1), -- two allowed rims, both running -> OK
     (102, '17', 1),               -- only rim is inactive
-    (103, '20', 1),               -- rim not in master
+    (103, '20', 1),               -- only rim is inactive
     (104, '19', 1),               -- no equipment running 19
     (105, '18', NULL),            -- OK via trimmed match, NULL area
     (100, '15', 1),               -- duplicate row
@@ -23,7 +25,8 @@ INSERT INTO master.material_size_lookup (material_id, rim_size, area_id) VALUES
 -- material 106: no mapping at all
 
 INSERT INTO master.runningsize_lookup (equipment_id, rim_size) VALUES
-    (501, '15'), (502, '15 '), (503, '18'), (504, '16'), (505, '21');   -- 21 not in master
+    (501, '15'), (502, '15 '), (503, '18'), (504, '16'), (505, '21'),
+    (508, '17');                  -- running a rim that has been deactivated
 
 INSERT INTO curing.o_production
     (equipment_id, recipe_id, production_id, material_id, quantity, quality_status,

@@ -33,7 +33,7 @@ const TABLES = {
       { key: "wip_tires", label: "WIP tires", num: true },
       { key: "allowed_rim_sizes", label: "Allowed rims" },
       { key: "running_rim_sizes", label: "Rims running" },
-      { key: "invalid_rim_sizes", label: "Not active in rim master" },
+      { key: "inactive_rim_sizes", label: "Inactive rims" },
       { key: "eligible_equipment", label: "Eligible equipment" },
       { key: "curing_presses", label: "Curing presses" },
       { key: "first_cured", label: "First cured" },
@@ -69,7 +69,7 @@ const TABLES = {
     columns: [
       { key: "equipment_id", label: "Equipment", num: true },
       { key: "rim_size", label: "Running rim size" },
-      { key: "rim_master_status", label: "Rim master", pill: true, pillMap: { ACTIVE: "ok", INACTIVE: "warn", MISSING: "ng" } },
+      { key: "rim_master_status", label: "Rim master", pill: true, pillMap: { ACTIVE: "ok", INACTIVE: "ng" } },
       { key: "created_by", label: "Set by" },
       { key: "dtandtime", label: "Set at" },
     ],

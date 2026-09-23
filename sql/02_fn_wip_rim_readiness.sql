@@ -18,9 +18,9 @@ DROP FUNCTION IF EXISTS master.fn_wip_rim_readiness(timestamp, timestamp, int[],
 
 -- One row per recipe + material in WIP.
 --   OK                       at least one allowed rim is active and running
---   WARN_SOME_RIMS_INVALID   routable, but some allowed rims are missing/inactive in rim_master
+--   WARN_SOME_RIMS_INACTIVE  routable, but some allowed rims are inactive in rim_master
 --   NG_NO_MATERIAL_SIZE      material has no rim size mapped
---   NG_NO_ACTIVE_RIM         none of the allowed rims is active in rim_master
+--   NG_NO_ACTIVE_RIM         every allowed rim is inactive in rim_master
 --   NG_NO_EQUIPMENT_RUNNING  no equipment runs any of the active allowed rims
 CREATE FUNCTION master.fn_wip_rim_readiness(
     p_from           timestamp DEFAULT (now() - interval '2 days')::timestamp,
@@ -39,7 +39,7 @@ RETURNS TABLE(
     last_cured          timestamp,
     curing_presses      int[],
     allowed_rim_sizes   text[],   -- every size mapped to the material
-    invalid_rim_sizes   text[],   -- mapped but missing/inactive in rim_master
+    inactive_rim_sizes  text[],   -- mapped but inactive in rim_master
     running_rim_sizes   text[],   -- active allowed sizes some equipment is running
     eligible_equipment  int[])
 LANGUAGE sql STABLE AS $$
@@ -86,7 +86,7 @@ msize_checked AS (
 per_material AS (
     SELECT c.material_id,
            array_agg(c.rim_key ORDER BY c.rim_key)                                   AS allowed,
-           array_agg(c.rim_key ORDER BY c.rim_key) FILTER (WHERE c.rim_status <> 'ACTIVE') AS invalid,
+           array_agg(c.rim_key ORDER BY c.rim_key) FILTER (WHERE c.rim_status <> 'ACTIVE') AS inactive,
            array_agg(c.rim_key ORDER BY c.rim_key)
                FILTER (WHERE c.rim_status = 'ACTIVE' AND c.equipment IS NOT NULL)    AS running,
            (SELECT array_agg(DISTINCT e ORDER BY e)
@@ -98,26 +98,26 @@ per_material AS (
 final AS (
     SELECT CASE
              WHEN pm.allowed IS NULL                                  THEN 'NG_NO_MATERIAL_SIZE'
-             WHEN cardinality(pm.allowed) = COALESCE(cardinality(pm.invalid), 0) THEN 'NG_NO_ACTIVE_RIM'
+             WHEN cardinality(pm.allowed) = COALESCE(cardinality(pm.inactive), 0) THEN 'NG_NO_ACTIVE_RIM'
              WHEN pm.eligible IS NULL                                 THEN 'NG_NO_EQUIPMENT_RUNNING'
-             WHEN pm.invalid IS NOT NULL                              THEN 'WARN_SOME_RIMS_INVALID'
+             WHEN pm.inactive IS NOT NULL                             THEN 'WARN_SOME_RIMS_INACTIVE'
              ELSE 'OK'
            END AS status,
-           g.*, pm.allowed, pm.invalid, pm.running, pm.eligible
+           g.*, pm.allowed, pm.inactive, pm.running, pm.eligible
     FROM   grp g
     LEFT   JOIN per_material pm ON pm.material_id = g.material_id
 )
 SELECT f.status,
        CASE f.status
          WHEN 'NG_NO_MATERIAL_SIZE'     THEN 'Material has no rim size in material_size_lookup'
-         WHEN 'NG_NO_ACTIVE_RIM'        THEN 'No allowed rim is active in rim_master: ' || array_to_string(f.invalid, ',')
+         WHEN 'NG_NO_ACTIVE_RIM'        THEN 'All allowed rims are inactive in rim_master: ' || array_to_string(f.inactive, ',')
          WHEN 'NG_NO_EQUIPMENT_RUNNING' THEN 'No equipment is running any allowed rim: ' || array_to_string(f.allowed, ',')
-         WHEN 'WARN_SOME_RIMS_INVALID'  THEN 'Routable on rim ' || array_to_string(f.running, ',')
-                                             || '; missing/inactive in rim_master: ' || array_to_string(f.invalid, ',')
+         WHEN 'WARN_SOME_RIMS_INACTIVE' THEN 'Routable on rim ' || array_to_string(f.running, ',')
+                                             || '; inactive in rim_master: ' || array_to_string(f.inactive, ',')
          ELSE 'Routable on rim ' || array_to_string(f.running, ',') || ' (' || cardinality(f.eligible) || ' equipment)'
        END,
        f.recipe_id, f.material_id, f.wip_tires, f.first_cured, f.last_cured,
-       f.presses, f.allowed, f.invalid, f.running, f.eligible
+       f.presses, f.allowed, f.inactive, f.running, f.eligible
 FROM   final f
 ORDER  BY (f.status LIKE 'NG%') DESC, (f.status LIKE 'WARN%') DESC,
           f.wip_tires DESC, f.recipe_id, f.material_id
@@ -157,7 +157,7 @@ by_rim AS (
     FROM   readiness r
     LEFT   JOIN LATERAL (
         SELECT x AS rim_key FROM unnest(r.allowed_rim_sizes) x
-        WHERE  NOT (x = ANY (COALESCE(r.invalid_rim_sizes, '{}')))
+        WHERE  NOT (x = ANY (COALESCE(r.inactive_rim_sizes, '{}')))
     ) a ON true
 ),
 demand AS (
