@@ -11,7 +11,7 @@
 <header class="topbar">
   <div>
     <h1>Rim Size Validation</h1>
-    <p class="sub">WIP between Curing and DBM &middot; recipe &rarr; material &rarr; rim size &rarr; running equipment</p>
+    <p class="sub">WIP between Curing and DBM &middot; material &rarr; rim size &rarr; running DBM</p>
   </div>
   <div class="top-right">
     <div id="editBar" class="edit-bar"></div>
@@ -50,7 +50,7 @@
 
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="quick" aria-selected="true">Quick fix</button>
-    <button role="tab" data-tab="recipes">WIP recipes</button>
+    <button role="tab" data-tab="recipes">WIP materials</button>
     <button role="tab" data-tab="machines">Machines</button>
     <button role="tab" data-tab="rims">Rim sizes</button>
     <button role="tab" data-tab="gaps">Master data gaps</button>
@@ -75,9 +75,9 @@
         <div class="table-wrap qf-overview" id="qfOverview"></div>
       </div>
       <div class="qf-card">
-        <h3>Recipe rims</h3>
-        <p class="hint">Which rims can this recipe's tires run on (for the selected machine area)?</p>
-        <label class="qf-field">Recipe <select id="qfRecipe"><option>Loading&hellip;</option></select></label>
+        <h3>Material rims</h3>
+        <p class="hint">Which rims can this material's tires run on (for the selected machine area)?</p>
+        <label class="qf-field">Material <select id="qfRecipe"><option>Loading&hellip;</option></select></label>
         <div id="qfRecipeInfo"></div>
         <div class="qf-field">Change rim
           <div class="qf-row">
@@ -90,10 +90,10 @@
         <div class="qf-field">Add rim
           <div class="qf-row">
             <select id="qfRecipeRim" aria-label="Rim to add"></select>
-            <button id="qfAddRim" class="primary">Add rim to recipe</button>
+            <button id="qfAddRim" class="primary">Add rim to material</button>
           </div>
         </div>
-        <p class="qf-label" id="qfRecipeOverviewTitle">Recipes in WIP: current rim mapping</p>
+        <p class="qf-label" id="qfRecipeOverviewTitle">Materials in WIP: current rim mapping</p>
         <div class="table-wrap qf-overview" id="qfRecipeOverview"></div>
       </div>
     </div>
@@ -101,11 +101,11 @@
 
   <section class="panel" data-panel="recipes" hidden>
     <div class="toolbar">
-      <input type="search" class="search" data-for="recipes" placeholder="Filter recipe, material, rim, status&hellip;">
+      <input type="search" class="search" data-for="recipes" placeholder="Filter material, rim, status&hellip;">
       <label class="check"><input type="checkbox" class="issuesOnly" data-for="recipes"> Issues only</label>
       <button class="exportBtn" data-for="recipes">Export CSV</button>
     </div>
-    <div class="table-wrap" id="table-recipes"><p class="empty">Press <b>Validate</b> to check WIP recipes.</p></div>
+    <div class="table-wrap" id="table-recipes"><p class="empty">Press <b>Validate</b> to check WIP materials.</p></div>
   </section>
 
   <section class="panel" data-panel="machines" hidden>

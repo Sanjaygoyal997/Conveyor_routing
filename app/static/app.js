@@ -28,7 +28,6 @@ const TABLES = {
     statusKey: "status",
     columns: [
       { key: "status", label: "Status", pill: true },
-      { key: "recipe_id", label: "Recipe", num: true },
       { key: "material_id", label: "Material", num: true },
       { key: "wip_tires", label: "WIP tires", num: true },
       { key: "allowed_rim_sizes", label: "Allowed rims" },
@@ -66,7 +65,6 @@ const TABLES = {
       { key: "rim_size", label: "Rim size" },
       { key: "wip_tires", label: "WIP tires accepting", num: true },
       { key: "blocked_tires", label: "Blocked tires", num: true },
-      { key: "recipes", label: "Recipes" },
       { key: "materials", label: "Materials" },
       { key: "equipment_running", label: "Equipment running" },
       { key: "_fix", label: "", actions: true },
@@ -215,8 +213,8 @@ function renderSummary(recipes, rims, gaps, machines = []) {
   const errors = gaps.filter((g) => g.severity === "ERROR").length;
   const tiles = [
     ["WIP tires (Curing → DBM)", tires, ""],
-    ["Recipe / material groups", recipes.length, ""],
-    ["Groups with issues", ngRows.length, ngRows.length ? "ng" : "ok"],
+    ["Materials in WIP", recipes.length, ""],
+    ["Materials with issues", ngRows.length, ngRows.length ? "ng" : "ok"],
     ["WIP tires blocked", ngTires, ngTires ? "ng" : "ok"],
     ["Rim sizes not running", rimsNotRunning, rimsNotRunning ? "ng" : "ok"],
     ["Machines to fix / change over", toChange, toChange ? "ng" : "ok"],
@@ -291,7 +289,7 @@ async function checkBarcode(ev) {
     const atDbm = r.dbm.length ? `Already balanced at DBM ${r.dbm[0].equipment_id} on ${fmt(r.dbm[0].dtandtime)}` : "Not yet at DBM (in WIP)";
     out.innerHTML = `
       <div class="result-banner ${ok ? "ok" : "ng"}">${esc(headline)}
-        <small>${esc(first.message || "")} · material ${esc(first.material_id ?? "–")} · recipe ${esc(first.recipe_id ?? "–")} · rim ${esc(rims || "–")} · ${esc(atDbm)}</small>
+        <small>${esc(first.message || "")} · material ${esc(first.material_id ?? "–")} · rim ${esc(rims || "–")} · ${esc(atDbm)}</small>
       </div>
       <h3>Curing records</h3>${miniTable(r.curing, ["dtandtime", "equipment_id", "recipe_id", "material_id", "mould_code", "side", "quality_status", "state"])}
       <h3>DBM records</h3>${miniTable(r.dbm, ["dtandtime", "equipment_id", "model", "code", "total_rank", "ro_total"])}`;

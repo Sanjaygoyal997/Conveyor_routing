@@ -3,7 +3,7 @@
 SQL and a web UI for checking that every tire can be routed to equipment running the correct rim size.
 It works in two ways:
 
-- **In advance, on WIP between Curing and DBM:** checks each recipe/material in WIP, and the master data it relies on.
+- **In advance, on WIP between Curing and DBM:** checks each material in WIP, and the master data it relies on.
 - **At scan time:** checks a single barcode.
 
 **WIP** means tires cured in the last 2 days (`curing.o_production`) whose barcode is not yet in
@@ -37,7 +37,7 @@ Only rims that are active in `rim_master` can be picked.
 | Case | Fix… opens | Changes available |
 |---|---|---|
 | `NG_NO_MATERIAL_SIZE`, `PROD_MATERIAL_NO_SIZE` | Material | Add an allowed rim (`material_size_lookup` insert) |
-| Any recipe rim (Quick fix) | Recipe rims | Change a mapped rim to another active rim of the same area (`material_size_lookup` update, audited as `change_rim`) |
+| Any material rim (Quick fix) | Material rims | Change a mapped rim to another active rim of the same area (`material_size_lookup` update, audited as `change_rim`) |
 | `NG_NO_ACTIVE_RIM`, `WARN_SOME_RIMS_INACTIVE`, `MSL_RIM_INACTIVE` | Material | Reactivate the rim (`rim_master.isactive`), remove the mapping, or add another rim |
 | `NG_NO_EQUIPMENT_RUNNING`, `MSL_MATERIAL_NOT_RUNNABLE` | Material | Change over a DBM to one of the material's rims, or add a rim that is running |
 | `NG_NOT_RUNNING`, `INFO_NOT_RUNNING`, `INFO_NO_WIP`, `MSL_SIZE_NOT_RUNNING` | Rim | Change over equipment to this rim; open the affected materials or equipment |
@@ -52,9 +52,9 @@ Only rims that are active in `rim_master` can be picked.
 
 | Tab | What it shows |
 |---|---|
-| **Quick fix** (opens first) | Two simple forms. **DBM rim**: 1. select the DBM, 2. select the rim fitted on it, see how many WIP tires it frees or blocks, then save. The list holds every DBM (DBM-rim machines in `runningsize_lookup` plus every machine that balanced tires in the last 30 days, even without a rim), and **Other DBM** lets you type a new one. Under the form, an **All DBMs** table shows every DBM's current rim, status and the WIP tires that fit. The DBM being edited is highlighted with the pending change (`R20225 → R225245`), and clicking a row selects it. **Recipe rims**: pick a recipe, see its allowed rims, **change** one to another rim (the mapping row is updated in place), add one from a dropdown, or remove one. Under it, a **Recipes in WIP** table lists every recipe in the current WIP selection (the look-back window and filters, 2 days by default) with WIP tires, current rims (inactive ones struck through), status and eligible DBMs. The selected recipe shows the pending rim (`+ R20225`), and clicking a row selects it. Suggested changeovers are buttons that fill in the form. The Fix… buttons on recipes and machines open this tab with the row selected. |
-| **Validate** button + summary | WIP tires, recipe/material groups, groups with issues, blocked tires, rim sizes not running, master-data errors |
-| WIP recipes | `fn_wip_rim_readiness`: one row per recipe + material in WIP |
+| **Quick fix** (opens first) | Two simple forms. **DBM rim**: 1. select the DBM, 2. select the rim fitted on it, see how many WIP tires it frees or blocks, then save. The list holds every DBM (DBM-rim machines in `runningsize_lookup` plus every machine that balanced tires in the last 30 days, even without a rim), and **Other DBM** lets you type a new one. Under the form, an **All DBMs** table shows every DBM's current rim, status and the WIP tires that fit. The DBM being edited is highlighted with the pending change (`R20225 → R225245`), and clicking a row selects it. **Material rims**: pick a material, see its allowed rims, **change** one to another rim (the mapping row is updated in place), add one from a dropdown, or remove one. Under it, a **Materials in WIP** table lists every material in the current WIP selection (the look-back window and filters, 2 days by default) with WIP tires, current rims (inactive ones struck through), status and eligible DBMs. The selected material shows the pending rim (`+ R20225`), and clicking a row selects it. Suggested changeovers are buttons that fill in the form. The Fix… buttons on materials and machines open this tab with the row selected. |
+| **Validate** button + summary | WIP tires, materials in WIP, materials with issues, blocked tires, rim sizes not running, master-data errors |
+| WIP materials | `fn_wip_rim_readiness`: one row per material in WIP |
 | Machines | `fn_machine_rim_check`: per machine, the WIP tires it can take, tires that can only go there, and a suggested changeover (**Apply** button) |
 | Rim sizes | `fn_wip_rim_demand`: WIP demand per rim size vs equipment running it |
 | Master data gaps | `fn_rim_master_data_gaps`: ERROR / WARN / INFO findings |
@@ -78,6 +78,9 @@ Tire barcode (scanned) = curing.o_production.production_id
 
 ### Rim model
 
+- **Identity: material.** WIP is grouped by `curing.o_production.material_id`, and rims are mapped per
+  material in `material_size_lookup`. `recipe_id` is not used.
+
 - **`rim_size` stores `rim_master.rim_id`.** `rim_master` has one row per rim per area, so rim_id 1
   (`R20225`, area 12) and rim_id 13 (`R20225`, area 11) are the same rim. Rims are compared by **name**
   (`master.fn_rim_name`). Active or inactive is checked on the exact `rim_id` (`master.fn_rim_status`).
@@ -100,7 +103,7 @@ rims that is active in `rim_master`.
 |---|---|---|
 | `sql/00_helpers.sql` | `fn_rim_key`, `fn_rim_status` | Normalise rim sizes and look them up in `rim_master` |
 | `sql/01_indexes.sql` | index on `o_production(production_id)` | Barcode lookups; `production_id` has no index today |
-| `sql/02_fn_wip_rim_readiness.sql` | `fn_wip_rim_readiness(...)` | **WIP check per recipe + material**: tire count, required rim, rim status, eligible equipment |
+| `sql/02_fn_wip_rim_readiness.sql` | `fn_wip_rim_readiness(...)` | **WIP check per material**: tire count, allowed rims, rim status, eligible equipment |
 | | `fn_wip_rim_demand(...)` | **WIP check per rim size**: tires needing each rim vs the equipment running it |
 | `sql/03_fn_rim_master_data_gaps.sql` | `fn_rim_master_data_gaps(...)` | Full master-data gap report (ERROR / WARN / INFO) |
 | `sql/04_fn_validate_tire_barcode.sql` | `fn_validate_tire_barcode(...)` | Scan-time check of one barcode |

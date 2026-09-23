@@ -1,6 +1,6 @@
 "use strict";
 // Quick fix tab: two plain forms driven by dropdowns.
-//   Recipe  -> allowed rims   (material_size_lookup, for the selected machine area)
+//   Material -> allowed rims  (material_size_lookup, for the selected machine area)
 //   DBM     -> running rim    (runningsize_lookup): pick the DBM first, then its rim
 // Uses app.js (state, api, esc, fmt, $) and fixes.js (RIMS, RUNNING, loadLookups, activeRims, write, changeoverImpact, pillHtml).
 
@@ -18,12 +18,11 @@ function formMachines() {
 const checkRow = (id) => (state.machines?.rows || []).find((m) => String(m.equipment_id) === String(id));
 const currentEq = () => (qf.eq === "__other" ? $("#qfEqOther").value.trim() : qf.eq);
 
-// sorted by recipe number (rows without a recipe last)
+// WIP materials sorted by material id (the rim mapping is keyed by material_id)
 function recipeRows() {
-  const n = (r) => (r.recipe_id == null ? Infinity : r.recipe_id);
-  return [...(state.recipes?.rows || [])].sort((a, b) => n(a) - n(b) || a.material_id - b.material_id);
+  return [...(state.recipes?.rows || [])].sort((a, b) => a.material_id - b.material_id);
 }
-const recipeKey = (r) => `${r.recipe_id ?? ""}|${r.material_id}`;
+const recipeKey = (r) => String(r.material_id);
 
 async function renderQuickFix() {
   const rows = recipeRows();
@@ -34,14 +33,10 @@ async function renderQuickFix() {
   }
   await loadLookups();
 
-  // ---- recipe form
+  // ---- material form (internal names still say "recipe")
   if (!rows.some((r) => recipeKey(r) === qf.recipe)) qf.recipe = recipeKey(rows.find((r) => r.status.startsWith("NG")) || rows[0]);
-  // plain names in the dropdown; the material is added only when a recipe has several
-  const perRecipe = rows.reduce((m, r) => m.set(r.recipe_id, (m.get(r.recipe_id) || 0) + 1), new Map());
   $("#qfRecipe").innerHTML = rows.map((r) =>
-    `<option value="${esc(recipeKey(r))}"${recipeKey(r) === qf.recipe ? " selected" : ""}>` +
-    (r.recipe_id == null ? `Material ${r.material_id}`
-      : `Recipe ${esc(r.recipe_id)}${perRecipe.get(r.recipe_id) > 1 ? ` (material ${r.material_id})` : ""}`) + `</option>`).join("");
+    `<option value="${esc(recipeKey(r))}"${recipeKey(r) === qf.recipe ? " selected" : ""}>Material ${r.material_id}</option>`).join("");
   await renderRecipePart();
 
   // ---- DBM form: every DBM machine, even without a rim
@@ -136,7 +131,7 @@ function renderOverview() {
     }).join("")}</tbody></table>` : `<p class="empty">No DBMs found.</p>`;
 }
 
-// Overview of every recipe in the current WIP selection and its rims; the selected one shows the pending rim.
+// Overview of every material in the current WIP selection and its rims; the selected one shows the pending rim.
 function renderRecipeOverview() {
   const rows = recipeRows();
   const pending = RIMS.find((r) => String(r.rim_id) === $("#qfRecipeRim").value);
@@ -144,8 +139,8 @@ function renderRecipeOverview() {
   const chTo = RIMS.find((r) => String(r.rim_id) === $("#qfChangeTo").value);
   $("#qfChange").disabled = !(chFrom && chTo) || !CONFIG.writes_enabled;
   $("#qfRecipeOverviewTitle").textContent =
-    `Recipes in WIP (${$("#hours").selectedOptions[0]?.textContent.toLowerCase() || "look-back"}): current rim mapping`;
-  $("#qfRecipeOverview").innerHTML = rows.length ? `<table><thead><tr><th>Recipe</th><th class="num">WIP tires</th><th>Rims</th><th>Status</th><th>DBMs</th></tr></thead><tbody>${
+    `Materials in WIP (${$("#hours").selectedOptions[0]?.textContent.toLowerCase() || "look-back"}): current rim mapping`;
+  $("#qfRecipeOverview").innerHTML = rows.length ? `<table><thead><tr><th>Material</th><th class="num">WIP tires</th><th>Rims</th><th>Status</th><th>DBMs</th></tr></thead><tbody>${
     rows.map((r) => {
       const sel = recipeKey(r) === qf.recipe;
       const rims = (r.allowed_rim_sizes || []).map((k) => {
@@ -154,10 +149,10 @@ function renderRecipeOverview() {
         return sel && chFrom && chTo && chFrom.rim_name === k ? `${txt} → <b>${esc(chTo.name)}</b>` : txt;
       }).join(", ") || "—";
       const add = sel && pending ? ` <b>+ ${esc(pending.name)}</b>` : "";
-      const name = r.recipe_id == null ? `Material ${r.material_id}` : `Recipe ${esc(r.recipe_id)}`;
+      const name = `Material ${r.material_id}`;
       return `<tr class="${sel ? "qf-sel" : ""}" data-qf-recipe="${esc(recipeKey(r))}"><td>${name}</td><td class="num">${r.wip_tires}</td>` +
         `<td class="m">${rims}${add}</td><td>${pillHtml(r.status)}</td><td class="m">${esc(fmt(r.eligible_equipment) || "—")}</td></tr>`;
-    }).join("")}</tbody></table>` : `<p class="empty">No recipes in WIP for this selection.</p>`;
+    }).join("")}</tbody></table>` : `<p class="empty">No materials in WIP for this selection.</p>`;
 }
 
 function renderImpact() {
@@ -170,7 +165,7 @@ function renderImpact() {
   renderOverview();
 }
 
-// Open the Quick fix tab with a recipe or machine preselected (used by the Fix… buttons).
+// Open the Quick fix tab with a material or machine preselected (used by the Fix… buttons).
 function openQuickFix({ recipe, eq } = {}) {
   if (recipe) qf.recipe = recipe;
   if (eq != null) qf.eq = String(eq);
@@ -188,8 +183,8 @@ $("#qfChange").addEventListener("click", () => {
   const r = recipeRows().find((x) => recipeKey(x) === qf.recipe);
   if (!from || !to || !r) return;
   write("PUT", `/api/fix/material-rim/${from.id}/rim`, { rim_id: to.rim_id },
-    `Change rim ${rimLabel(from.rim_name)} to ${to.name} for recipe ${r.recipe_id ?? "—"} (material ${r.material_id})?`,
-    `Updates material_size_lookup row ${from.id}. Tires of this recipe will run on ${to.name} instead of ${rimLabel(from.rim_name)}.`);
+    `Change rim ${rimLabel(from.rim_name)} to ${to.name} for material ${r.material_id}?`,
+    `Updates material_size_lookup row ${from.id}. Tires of this material will run on ${to.name} instead of ${rimLabel(from.rim_name)}.`);
 });
 $("#qfRecipeRim").addEventListener("change", () => {
   $("#qfAddRim").disabled = !$("#qfRecipeRim").value || !CONFIG.writes_enabled;
@@ -220,8 +215,8 @@ $("#qfAddRim").addEventListener("click", () => {
   if (!r || !rim) return;
   const area = $("#areaId").value.trim();
   write("POST", "/api/fix/material-rim", { material_id: r.material_id, rim_id: rim.rim_id, area_id: area === "" ? null : +area },
-    `Add rim ${rim.name} to recipe ${r.recipe_id ?? "—"} (material ${r.material_id})?`,
-    `Tires of this recipe will be able to run on ${rim.name}.`);
+    `Add rim ${rim.name} to material ${r.material_id}?`,
+    `Tires of this material will be able to run on ${rim.name}.`);
 });
 
 $("#qfRecipeInfo").addEventListener("click", (ev) => {

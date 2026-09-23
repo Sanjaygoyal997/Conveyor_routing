@@ -1,5 +1,5 @@
 -- Advance validation of WIP between Curing and DBM: before tires reach DBM,
--- check that every recipe/material in WIP has a usable rim size and that at
+-- check that every material in WIP has a usable rim size and that at
 -- least one equipment is running it.
 --
 -- A material may be mapped to several rim sizes in material_size_lookup; the
@@ -24,7 +24,7 @@ DROP FUNCTION IF EXISTS master.fn_wip_rim_readiness(timestamp, timestamp, int[],
 DROP FUNCTION IF EXISTS master.fn_wip_rim_demand(timestamp, timestamp, int[], int[], int, boolean);
 DROP FUNCTION IF EXISTS master.fn_wip_rim_readiness(timestamp, timestamp, int[], int[], int, boolean);
 
--- One row per recipe + material in WIP.
+-- One row per material in WIP (the rim mapping is keyed by material_id).
 --   OK                       at least one allowed rim is active and running
 --   WARN_SOME_RIMS_INACTIVE  routable, but some allowed rims are inactive in rim_master
 --   NG_NO_MATERIAL_SIZE      material has no rim size mapped
@@ -40,7 +40,6 @@ CREATE FUNCTION master.fn_wip_rim_readiness(
 RETURNS TABLE(
     status              text,
     message             text,
-    recipe_id           int,
     material_id         int,
     wip_tires           bigint,
     first_cured         timestamp,
@@ -53,7 +52,7 @@ RETURNS TABLE(
 LANGUAGE sql STABLE AS $$
 WITH latest AS (
     SELECT DISTINCT ON (o.production_id)
-           o.production_id, o.recipe_id, o.material_id, o.equipment_id,
+           o.production_id, o.material_id, o.equipment_id,
            o.state, o.quality_status, o.dtandtime
     FROM   curing.o_production o
     WHERE  o.dtandtime >= p_from AND o.dtandtime < p_to
@@ -67,13 +66,13 @@ wip AS (
                   SELECT 1 FROM dbm.o_production d WHERE d.barcode = l.production_id))
 ),
 grp AS (
-    SELECT w.recipe_id, w.material_id,
+    SELECT w.material_id,
            count(*)                                         AS wip_tires,
            min(w.dtandtime)                                 AS first_cured,
            max(w.dtandtime)                                 AS last_cured,
            array_agg(DISTINCT w.equipment_id ORDER BY w.equipment_id) AS presses
     FROM   wip w
-    GROUP  BY w.recipe_id, w.material_id
+    GROUP  BY w.material_id
 ),
 -- one row per (material, allowed rim name); active if any mapped rim_id with that name is active
 msize AS (
@@ -149,11 +148,11 @@ SELECT f.status,
                                              || '; inactive in rim_master: ' || array_to_string(f.inactive, ',')
          ELSE 'Routable on rim ' || array_to_string(f.running, ',') || ' (' || cardinality(f.eligible) || ' equipment)'
        END,
-       f.recipe_id, f.material_id, f.wip_tires, f.first_cured, f.last_cured,
+       f.material_id, f.wip_tires, f.first_cured, f.last_cured,
        f.presses, f.allowed, f.inactive, f.running, f.eligible
 FROM   final f
 ORDER  BY (f.status LIKE 'NG%') DESC, (f.status LIKE 'WARN%') DESC,
-          f.wip_tires DESC, f.recipe_id, f.material_id
+          f.wip_tires DESC, f.material_id
 $$;
 
 -- One row per rim size: WIP tires that can use it vs equipment running it.
@@ -179,7 +178,6 @@ RETURNS TABLE(
     rim_size            text,
     wip_tires           bigint,   -- WIP tires that can use this rim
     blocked_tires       bigint,   -- of those, tires with no eligible equipment at all
-    recipes             int[],
     materials           int[],
     equipment_running   int[])
 LANGUAGE sql STABLE AS $$
@@ -199,7 +197,6 @@ demand AS (
     SELECT b.rim_key,
            sum(b.wip_tires)::bigint                                              AS wip_tires,
            COALESCE(sum(b.wip_tires) FILTER (WHERE b.eligible_equipment IS NULL), 0)::bigint AS blocked_tires,
-           array_agg(DISTINCT b.recipe_id)   FILTER (WHERE b.recipe_id IS NOT NULL) AS recipes,
            array_agg(DISTINCT b.material_id)                                     AS materials
     FROM   by_rim b
     GROUP  BY b.rim_key
@@ -232,7 +229,7 @@ SELECT x.* FROM (
            CASE WHEN rn.rim_key = 'UNIVERSALRIM' THEN (SELECT uw.wip_tires FROM universal_wip uw)
                 ELSE COALESCE(d.wip_tires, 0) END AS wip_tires,
            COALESCE(d.blocked_tires, 0)     AS blocked_tires,
-           d.recipes, d.materials,
+           d.materials,
            rn.equipment                     AS equipment_running
     FROM   demand d
     FULL   JOIN running rn ON rn.rim_key = d.rim_key

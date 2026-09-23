@@ -137,7 +137,7 @@ function equipmentOptions(filter = () => true) {
 
 // ---- material: mapped rims, add rim, change over equipment --------------------
 function materialDialog(materialId, context = {}) {
-  openDialog(`Material ${materialId}${context.recipe_id ? ` · recipe ${context.recipe_id}` : ""}`, async () => {
+  openDialog(`Material ${materialId}`, async () => {
     const maps = await api(`/api/material/${materialId}`);
     const selArea = $("#areaId").value.trim();
     const here = maps.filter((m) => !selArea || m.area_id == null || String(m.area_id) === selArea);  // mappings for this area
@@ -148,7 +148,7 @@ function materialDialog(materialId, context = {}) {
     const areaDefault = $("#areaId").value.trim() || addable[0]?.local_area_id || "";
     const areaName = $("#areaId").selectedOptions[0]?.textContent || "all areas";
     // status from the latest validation run, so it updates after each fix
-    const live = (state.recipes?.rows || []).find((r) => r.material_id === materialId && (!context.recipe_id || r.recipe_id === context.recipe_id));
+    const live = (state.recipes?.rows || []).find((r) => r.material_id === materialId);
     const status = live ? live.status : context.status, message = live ? live.message : context.message;
     const rows = maps.map((m) => `
       <tr><td class="m">${esc(m.rim_name)} <span class="hint">id ${esc(m.rim_size)}</span></td><td>${esc(m.area_id ?? "—")}</td><td>${pillHtml(m.rim_master_status)}</td>
@@ -302,7 +302,7 @@ function fixActions(table, row, i) {
 }
 
 function onFix(table, row, el) {
-  if (table === "recipes") return openQuickFix({ recipe: `${row.recipe_id ?? ""}|${row.material_id}` });
+  if (table === "recipes") return openQuickFix({ recipe: String(row.material_id) });
   if (table === "rims") return el.dataset.material ? materialDialog(+el.dataset.material) : rimDialog(row.rim_size);
   if (table === "running") return openQuickFix({ eq: row.equipment_id });
   if (table === "machines") {

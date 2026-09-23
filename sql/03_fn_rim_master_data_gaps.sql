@@ -31,7 +31,7 @@ avail AS (
       AND  (p_area_id IS NULL OR COALESCE(master.fn_rim_area(rim_size), p_area_id) = p_area_id)
 ),
 prod AS (
-    SELECT o.production_id, o.recipe_id, o.material_id, o.equipment_id, o.dtandtime
+    SELECT o.production_id, o.material_id, o.equipment_id, o.dtandtime
     FROM   curing.o_production o
     WHERE  o.dtandtime >= p_from AND o.dtandtime < p_to
 ),
@@ -190,20 +190,6 @@ findings AS (
            jsonb_build_object('production_id', production_id)
     FROM   prod GROUP BY production_id
     HAVING count(*) > 1 AND count(DISTINCT material_id) = 1
-
-    UNION ALL
-    SELECT 'WARN', 'PROD_RECIPE_MULTI_MATERIAL', 'o_production', 'recipe_id=' || recipe_id,
-           'Recipe produced materials ' || string_agg(DISTINCT material_id::text, ','),
-           jsonb_build_object('recipe_id', recipe_id)
-    FROM   prod WHERE recipe_id IS NOT NULL
-    GROUP  BY recipe_id HAVING count(DISTINCT material_id) > 1
-
-    UNION ALL
-    SELECT 'WARN', 'PROD_NO_RECIPE', 'o_production', 'equipment_id=' || equipment_id,
-           count(*) || ' record(s) with NULL recipe_id',
-           jsonb_build_object('curing_equipment_id', equipment_id)
-    FROM   prod WHERE recipe_id IS NULL
-    GROUP  BY equipment_id
 
     -- DBM equipment running a rim that belongs to another area (e.g. a TUO rim)
     UNION ALL

@@ -87,7 +87,7 @@ def wip_readiness(
     area_id: Optional[int] = None,
     exclude_at_dbm: bool = True,
 ):
-    """One row per recipe + material in WIP (cured, not yet at DBM)."""
+    """One row per material in WIP (cured, not yet at DBM)."""
     return query(
         f"SELECT * FROM master.fn_wip_rim_readiness({WIP_ARGS})",
         wip_params(hours, wip_states, ok_quality, area_id, exclude_at_dbm),
