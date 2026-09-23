@@ -36,12 +36,13 @@ async function loadLookups() {
 }
 
 const rimKey = (s) => (s == null ? null : String(s).trim().toUpperCase() || null);
+// rims are defined per area (machine type): only offer rims of the selected area
+const inArea = (r) => { const a = $("#areaId").value.trim(); return !a || String(r.local_area_id) === a; };
 function rimFor(key, { activeOnly = true } = {}) {
-  const area = $("#areaId").value.trim();
   const hits = RIMS.filter((r) => (r.rim_key === key || String(r.rim_id) === key) && (!activeOnly || r.isactive));
-  return hits.find((r) => area && String(r.local_area_id) === area) || hits[0] || null;
+  return hits.find(inArea) || null;
 }
-const activeRims = () => RIMS.filter((r) => r.isactive);
+const activeRims = () => RIMS.filter((r) => r.isactive && inArea(r));
 const demandOf = (key) => (state.rims?.rows || []).find((d) => d.rim_size === key);
 
 // ---- write + confirm ----------------------------------------------------------
@@ -126,7 +127,7 @@ function rimOptions(rims, selectedKey) {
   return rims.map((r) => {
     const d = demandOf(r.rim_key);
     const hint = d ? ` · ${d.wip_tires} WIP tires accept${d.blocked_tires ? `, ${d.blocked_tires} blocked` : ""}` : "";
-    const area = r.local_area_id != null ? ` · area ${r.local_area_id}` : "";
+    const area = r.local_area_id != null ? ` · ${r.area_name || "area " + r.local_area_id}` : "";
     const special = r.rim_key === "NONE" ? " · not available" : r.rim_key === "UNIVERSALRIM" ? " · takes any tire" : "";
     return `<option value="${r.rim_id}"${r.rim_key === selectedKey ? " selected" : ""}>${esc(r.name)}${area}${special}${hint}</option>`;
   }).join("");
@@ -140,11 +141,14 @@ function equipmentOptions(filter = () => true) {
 function materialDialog(materialId, context = {}) {
   openDialog(`Material ${materialId}${context.recipe_id ? ` · recipe ${context.recipe_id}` : ""}`, async () => {
     const maps = await api(`/api/material/${materialId}`);
-    const mapped = new Set(maps.map((m) => m.rim_name));
+    const selArea = $("#areaId").value.trim();
+    const here = maps.filter((m) => !selArea || m.area_id == null || String(m.area_id) === selArea);  // mappings for this area
+    const mapped = new Set(here.map((m) => m.rim_name));
     const addable = activeRims().filter((r) => !mapped.has(r.rim_key) && r.rim_key !== "NONE" && r.rim_key !== "UNIVERSALRIM");
-    const usable = [...new Set(maps.filter((m) => m.rim_master_status === "ACTIVE" && m.rim_name !== "NONE").map((m) => m.rim_name))]
+    const usable = [...new Set(here.filter((m) => m.rim_master_status === "ACTIVE" && m.rim_name !== "NONE").map((m) => m.rim_name))]
       .map((k) => rimFor(k)).filter(Boolean);
-    const areaDefault = maps.find((m) => m.area_id != null)?.area_id ?? ($("#areaId").value.trim() || addable[0]?.local_area_id || "");
+    const areaDefault = $("#areaId").value.trim() || addable[0]?.local_area_id || "";
+    const areaName = $("#areaId").selectedOptions[0]?.textContent || "all areas";
     // status from the latest validation run, so it updates after each fix
     const live = (state.recipes?.rows || []).find((r) => r.material_id === materialId && (!context.recipe_id || r.recipe_id === context.recipe_id));
     const status = live ? live.status : context.status, message = live ? live.message : context.message;
@@ -158,10 +162,10 @@ function materialDialog(materialId, context = {}) {
         </td></tr>`).join("");
     return `
       ${status ? `<p class="dlg-status">${pillHtml(status)} ${esc(message || "")}</p>` : ""}
-      <h4>Allowed rims</h4>
+      <h4>Allowed rims <span class="hint">(all areas; validation uses ${esc(areaName)})</span></h4>
       ${maps.length ? `<div class="table-wrap"><table><thead><tr><th>Rim</th><th>Area</th><th>Rim master</th><th>Running on</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
                     : `<p class="empty">No rim mapped yet. Add one below.</p>`}
-      <h4>Add an allowed rim</h4>
+      <h4>Add an allowed rim for ${esc(areaName)}</h4>
       <div class="form-row">
         <select id="addRim" aria-label="Rim to add">${rimOptions(addable) || "<option disabled>No other active rims</option>"}</select>
         <input id="addArea" class="num" type="number" placeholder="area" value="${esc(areaDefault)}" aria-label="Area">
@@ -275,8 +279,8 @@ function rimDialog(key) {
 }
 
 // ---- action buttons per table row ---------------------------------------------
-const MATERIAL_CHECKS = ["MSL_MULTI_RIM", "MSL_NULL_AREA", "MSL_NONE_RIM", "MSL_RIM_INACTIVE", "MSL_MATERIAL_NOT_RUNNABLE", "MSL_BLANK_RIM", "PROD_MATERIAL_NO_SIZE"];
-const EQUIPMENT_CHECKS = ["RUN_RIM_INACTIVE", "RUN_BLANK_RIM", "DBM_NO_RUNNING_SIZE"];
+const MATERIAL_CHECKS = ["MSL_MULTI_RIM", "MSL_NULL_AREA", "MSL_NONE_RIM", "MSL_RIM_WRONG_AREA", "MSL_RIM_INACTIVE", "MSL_MATERIAL_NOT_RUNNABLE", "MSL_BLANK_RIM", "PROD_MATERIAL_NO_SIZE"];
+const EQUIPMENT_CHECKS = ["RUN_RIM_WRONG_AREA", "RUN_RIM_INACTIVE", "RUN_BLANK_RIM", "DBM_NO_RUNNING_SIZE"];
 
 function fixActions(table, row, i) {
   const btn = (label, kind, extra = "") => `<button class="sm${kind === "primary" ? " fixbtn" : ""}" data-fix="${i}" ${extra}>${esc(label)}</button>`;

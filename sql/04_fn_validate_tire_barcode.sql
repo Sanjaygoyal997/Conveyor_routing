@@ -1,13 +1,15 @@
 -- Scan-time validation of one tire barcode (= curing.o_production.production_id).
 -- The tire may run on any ACTIVE rim mapped to its material (compared by
 -- rim_master name), or on equipment running UNIVERSALRIM. Equipment running
--- NONE is not available.
+-- NONE is not available. p_area_id is the machine type (default DBM): only
+-- that area's mappings count and only equipment running that area's rims.
+DROP FUNCTION IF EXISTS master.fn_validate_tire_barcode(varchar, int, int, int[]);
 --   p_equipment_id given -> one row: OK / NG_* for that equipment
 --   p_equipment_id NULL  -> one row per eligible equipment (routing candidates)
-CREATE OR REPLACE FUNCTION master.fn_validate_tire_barcode(
+CREATE FUNCTION master.fn_validate_tire_barcode(
     p_barcode      varchar,
     p_equipment_id int   DEFAULT NULL,
-    p_area_id      int   DEFAULT NULL,
+    p_area_id      int   DEFAULT master.fn_area_id('DBM'),
     p_ok_quality   int[] DEFAULT NULL)
 RETURNS TABLE(status text, message text, material_id int, recipe_id int,
               rim_size text, equipment_id int)
@@ -19,6 +21,7 @@ DECLARE
     v_allowed  text[];
     v_active   text[];
     v_run      text;
+    v_run_area int;
 BEGIN
     SELECT count(*), count(DISTINCT o.material_id) INTO v_cnt, v_mat_cnt
     FROM   curing.o_production o
@@ -71,13 +74,17 @@ BEGIN
     END IF;
 
     IF p_equipment_id IS NOT NULL THEN
-        SELECT master.fn_rim_name(r.rim_size) INTO v_run
+        SELECT master.fn_rim_name(r.rim_size), master.fn_rim_area(r.rim_size) INTO v_run, v_run_area
         FROM   master.runningsize_lookup r
         WHERE  r.equipment_id = p_equipment_id;
 
         IF v_run IS NULL THEN
             RETURN QUERY SELECT 'NG_NO_RUNNING_SIZE', 'Equipment has no running rim size',
                                 v_prod.material_id, v_prod.recipe_id, array_to_string(v_active, ','), p_equipment_id;
+        ELSIF p_area_id IS NOT NULL AND v_run_area IS NOT NULL AND v_run_area <> p_area_id THEN
+            RETURN QUERY SELECT 'NG_WRONG_AREA_EQUIPMENT',
+                                'Equipment runs a rim of area ' || v_run_area || ', not area ' || p_area_id,
+                                v_prod.material_id, v_prod.recipe_id, v_run, p_equipment_id;
         ELSIF v_run = 'NONE' THEN
             RETURN QUERY SELECT 'NG_EQUIPMENT_NOT_AVAILABLE', 'Equipment is running rim None (not available)',
                                 v_prod.material_id, v_prod.recipe_id, array_to_string(v_active, ','), p_equipment_id;
@@ -101,6 +108,7 @@ BEGIN
         FROM   master.runningsize_lookup r
         WHERE  master.fn_rim_name(r.rim_size) = ANY (v_active || 'UNIVERSALRIM'::text)
           AND  master.fn_rim_name(r.rim_size) <> 'NONE'
+          AND  (p_area_id IS NULL OR COALESCE(master.fn_rim_area(r.rim_size), p_area_id) = p_area_id)
         ORDER  BY r.equipment_id;
     IF NOT FOUND THEN
         RETURN QUERY SELECT 'NG_NO_EQUIPMENT_RUNNING',

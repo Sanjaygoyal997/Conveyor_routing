@@ -9,6 +9,11 @@
 -- Equipment running UNIVERSALRIM takes any tire that has an active rim;
 -- equipment running NONE is not available and takes no tires.
 --
+-- Area = machine type (master.area_master: 11 TUO, 12 DBM). p_area_id
+-- defaults to the DBM area: only mappings of that area count, and only
+-- equipment running a rim of that area is eligible. Pass another area (e.g.
+-- master.fn_area_id('TUO')) to validate for that machine type.
+--
 -- WIP = latest record per barcode (production_id) in curing.o_production cured
 -- in [p_from, p_to) (default: last 2 days), optionally filtered to the given
 -- state / quality_status codes (NULL = no filter), and - when
@@ -30,7 +35,7 @@ CREATE FUNCTION master.fn_wip_rim_readiness(
     p_to             timestamp DEFAULT now()::timestamp,
     p_wip_states     int[]     DEFAULT NULL,
     p_ok_quality     int[]     DEFAULT NULL,
-    p_area_id        int       DEFAULT NULL,
+    p_area_id        int       DEFAULT master.fn_area_id('DBM'),
     p_exclude_at_dbm boolean   DEFAULT true)
 RETURNS TABLE(
     status              text,
@@ -86,6 +91,8 @@ running AS (
     FROM   master.runningsize_lookup r
     WHERE  master.fn_rim_key(r.rim_size) IS NOT NULL
       AND  master.fn_rim_name(r.rim_size) <> 'NONE'
+      -- equipment of this machine type = running a rim of this area
+      AND  (p_area_id IS NULL OR COALESCE(master.fn_rim_area(r.rim_size), p_area_id) = p_area_id)
 ),
 universal AS (
     SELECT array_agg(u.equipment_id ORDER BY u.equipment_id) AS equipment
@@ -165,7 +172,7 @@ CREATE FUNCTION master.fn_wip_rim_demand(
     p_to             timestamp DEFAULT now()::timestamp,
     p_wip_states     int[]     DEFAULT NULL,
     p_ok_quality     int[]     DEFAULT NULL,
-    p_area_id        int       DEFAULT NULL,
+    p_area_id        int       DEFAULT master.fn_area_id('DBM'),
     p_exclude_at_dbm boolean   DEFAULT true)
 RETURNS TABLE(
     status              text,
@@ -203,6 +210,7 @@ running AS (
     FROM   master.runningsize_lookup r
     WHERE  master.fn_rim_key(r.rim_size) IS NOT NULL
       AND  master.fn_rim_name(r.rim_size) <> 'NONE'        -- not available
+      AND  (p_area_id IS NULL OR COALESCE(master.fn_rim_area(r.rim_size), p_area_id) = p_area_id)
     GROUP  BY 1
 ),
 -- tires a UNIVERSALRIM equipment can take: every tire with an active rim

@@ -45,6 +45,8 @@ Only rims that are active in `rim_master` can be picked.
 | `MSL_DUPLICATE_ROW` | Confirm | Keep the oldest row, delete the duplicates |
 | `MSL_NULL_AREA` | Material | Set the area on the mapping |
 | `MSL_NONE_RIM` | Material | Remove the `None` mapping and add a real rim |
+| `MSL_RIM_WRONG_AREA` | Material | Remove the mapping and add the rim of the right area |
+| `RUN_RIM_WRONG_AREA` | Equipment | Set a rim of the DBM area |
 | `PROD_*` (production records), `RIM_*`, `FORMAT_DRIFT` | – | Not editable here: fix these in the source system |
 
 | Tab | What it shows |
@@ -76,6 +78,11 @@ Tire barcode (scanned) = curing.o_production.production_id
 - **`rim_size` stores `rim_master.rim_id`.** `rim_master` has one row per rim per area, so rim_id 1
   (`R20225`, area 12) and rim_id 13 (`R20225`, area 11) are the same rim. Rims are compared by **name**
   (`master.fn_rim_name`). Active or inactive is checked on the exact `rim_id` (`master.fn_rim_status`).
+- **Area = machine type** (`master.area_master`: 11 = TUO, 12 = DBM). Validation is done for one area,
+  **DBM by default** (`master.fn_area_id('DBM')`). Only mappings with that `area_id` count, and only
+  equipment running a rim of that area is eligible. Pass `p_area_id => master.fn_area_id('TUO')`
+  (or pick TUO in the UI) to validate for TUO. `MSL_RIM_WRONG_AREA` flags a mapping whose rim belongs
+  to another area. `RUN_RIM_WRONG_AREA` flags a DBM machine running a rim of another area.
 - **`UniversalRIM`:** equipment running it can take **any** tire whose material has an active rim.
 - **`None`:** equipment running it is **not available** and takes no tires. This isn't an error.
   A material mapped to `None` is flagged `MSL_NONE_RIM`, and the UI won't map `None` to a material.
@@ -132,6 +139,7 @@ SELECT * FROM master.fn_validate_tire_barcode('T0001');       -- list eligible e
 | `INFO_NO_WIP` | Equipment is running a rim that no WIP accepts | Candidate for a changeover |
 | `NG_SIZE_MISMATCH` (barcode) | The target equipment's rim is not one of the tire's allowed rims | Route the tire to another machine |
 | `NG_EQUIPMENT_NOT_AVAILABLE` (barcode) | The target equipment is running `None` | Route the tire to another machine |
+| `NG_WRONG_AREA_EQUIPMENT` (barcode) | The target equipment runs a rim of another area (e.g. a TUO machine) | Pick equipment of this area |
 | `INFO_UNIVERSAL` (rim sizes) | Equipment running `UniversalRIM`; the count is the WIP tires it can take | None needed |
 
 Rim sizes are always created in `rim_master` before they can be mapped, so a rim can't be missing from it;

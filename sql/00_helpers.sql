@@ -45,3 +45,26 @@ LANGUAGE sql STABLE AS $$
     WHERE  (rm.rim_id::text = master.fn_rim_key(p_rim_size) OR master.fn_rim_key(rm.name) = master.fn_rim_key(p_rim_size))
       AND  (p_area_id IS NULL OR rm.local_area_id = p_area_id OR rm.local_area_id IS NULL)
 $$;
+
+-- Area (rim_master.local_area_id) of a stored rim_size (rim_id); NULL when the
+-- value is a name rather than a rim_id.
+CREATE OR REPLACE FUNCTION master.fn_rim_area(p_rim_size text)
+RETURNS int
+LANGUAGE sql STABLE AS $$
+    SELECT rm.local_area_id
+    FROM   master.rim_master rm
+    WHERE  rm.rim_id::text = master.fn_rim_key(p_rim_size)
+    LIMIT  1
+$$;
+
+-- local_area_id of an area by name from master.area_master (e.g. 'DBM' -> 12,
+-- 'TUO' -> 11). Rims in rim_master are defined per area = per machine type.
+CREATE OR REPLACE FUNCTION master.fn_area_id(p_name text)
+RETURNS int
+LANGUAGE sql STABLE AS $$
+    SELECT a.local_area_id
+    FROM   master.area_master a
+    WHERE  UPPER(BTRIM(a.name)) = UPPER(BTRIM(p_name))
+    ORDER  BY a.local_area_id
+    LIMIT  1
+$$;

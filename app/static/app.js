@@ -73,6 +73,7 @@ const TABLES = {
       { key: "equipment_id", label: "Equipment", num: true },
       { key: "rim_name", label: "Running rim" },
       { key: "rim_size", label: "rim_id" },
+      { key: "rim_area", label: "Rim area" },
       { key: "rim_master_status", label: "Status", pill: true,
         pillMap: { ACTIVE: "ok", INACTIVE: "ng", "NOT SET": "ng", "NOT AVAILABLE": "warn", UNIVERSAL: "info" } },
       { key: "created_by", label: "Set by" },
@@ -292,7 +293,20 @@ $("#barcodeForm").addEventListener("submit", checkBarcode);
 $$(".search, .issuesOnly").forEach((el) => el.addEventListener("input", () => state[el.dataset.for] && renderTable(el.dataset.for)));
 $$(".exportBtn").forEach((b) => b.addEventListener("click", () => state[b.dataset.for] && exportCsv(b.dataset.for)));
 
+// machine areas (TUO / DBM ...) from area_master; DBM is the default
+async function loadAreas() {
+  try {
+    const areas = await api("/api/areas");
+    $("#areaId").innerHTML = areas.map((a) =>
+      `<option value="${a.local_area_id}"${a.is_default ? " selected" : ""}>${esc(a.name)} (area ${a.local_area_id})</option>`).join("")
+      || `<option value="">All areas</option>`;
+  } catch {
+    $("#areaId").innerHTML = `<option value="">All areas</option>`;
+  }
+}
+loadAreas().then(loadRunning);
+$("#areaId").addEventListener("change", () => { loadRunning(); if (state.recipes) validate(); });
+
 api("/api/health")
   .then((h) => { const el = $("#dbStatus"); el.textContent = `${h.database} · DB time ${fmt(h.db_time)}`; el.className = "db-status ok"; })
   .catch((e) => { const el = $("#dbStatus"); el.textContent = "Database unreachable"; el.className = "db-status bad"; showError(e.message); });
-loadRunning();

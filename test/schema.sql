@@ -36,3 +36,9 @@ CREATE TABLE dbm.o_production (
     model varchar(150), code varchar(150), barcode varchar(150),
     total_rank varchar(150), ro_total varchar(150));
 CREATE INDEX idx_dbm_barcode ON dbm.o_production (barcode);
+
+-- master.area_master (plant FK left out for the test DB)
+CREATE TABLE master.area_master (
+    id serial, name varchar(50) NOT NULL, description varchar(100),
+    local_area_id int PRIMARY KEY, continuous int DEFAULT 0, plant_id int NOT NULL,
+    local_bu_id int NOT NULL, slug varchar(100), created_by varchar, dtandtime time);

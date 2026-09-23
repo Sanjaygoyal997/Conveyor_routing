@@ -5,6 +5,8 @@
 -- on the stored rim_id. Equipment running NONE is not available;
 -- UNIVERSALRIM equipment can take any tire.
 -- Production checks (PROD_*, DBM_*) only look at the window [p_from, p_to).
+-- p_area_id NULL = all areas (machine types); otherwise only that area's
+-- mappings and equipment running that area's rims.
 DROP FUNCTION IF EXISTS master.fn_rim_master_data_gaps(timestamp, timestamp, int);
 
 CREATE FUNCTION master.fn_rim_master_data_gaps(
@@ -24,7 +26,9 @@ run AS (
 ),
 -- equipment that can actually take tires
 avail AS (
-    SELECT * FROM run WHERE rim_key IS NOT NULL AND rim_key <> 'NONE'
+    SELECT * FROM run
+    WHERE  rim_key IS NOT NULL AND rim_key <> 'NONE'
+      AND  (p_area_id IS NULL OR COALESCE(master.fn_rim_area(rim_size), p_area_id) = p_area_id)
 ),
 prod AS (
     SELECT o.production_id, o.recipe_id, o.material_id, o.equipment_id, o.dtandtime
@@ -55,6 +59,15 @@ findings AS (
            'material_id=' || material_id || ' has blank rim_size',
            jsonb_build_object('material_id', material_id, 'row_id', id)
     FROM   msl WHERE rim_key IS NULL
+
+    UNION ALL
+    SELECT 'ERROR', 'MSL_RIM_WRONG_AREA', 'material_size_lookup', 'id=' || id,
+           'material_id=' || material_id || ' mapping for area ' || area_id || ' uses rim ' || rim_key
+           || ' of area ' || master.fn_rim_area(rim_size),
+           jsonb_build_object('material_id', material_id, 'row_id', id)
+    FROM   msl
+    WHERE  area_id IS NOT NULL AND master.fn_rim_area(rim_size) IS NOT NULL
+      AND  master.fn_rim_area(rim_size) <> area_id
 
     UNION ALL
     SELECT 'WARN', 'MSL_NULL_AREA', 'material_size_lookup', 'id=' || id,
@@ -185,6 +198,17 @@ findings AS (
            jsonb_build_object('curing_equipment_id', equipment_id)
     FROM   prod WHERE recipe_id IS NULL
     GROUP  BY equipment_id
+
+    -- DBM equipment running a rim that belongs to another area (e.g. a TUO rim)
+    UNION ALL
+    SELECT 'ERROR', 'RUN_RIM_WRONG_AREA', 'runningsize_lookup', 'equipment_id=' || r.equipment_id,
+           'DBM equipment runs rim ' || r.rim_key || ' of area ' || master.fn_rim_area(r.rim_size)
+           || ' instead of a DBM (area ' || master.fn_area_id('DBM') || ') rim',
+           jsonb_build_object('equipment_id', r.equipment_id)
+    FROM   run r
+    WHERE  master.fn_rim_area(r.rim_size) <> master.fn_area_id('DBM')
+      AND  EXISTS (SELECT 1 FROM dbm.o_production d
+                   WHERE d.equipment_id = r.equipment_id AND d.dtandtime >= p_from AND d.dtandtime < p_to)
 
     -- DBM equipment active in the window with no running rim size
     UNION ALL

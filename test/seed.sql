@@ -4,6 +4,11 @@ INSERT INTO master.users VALUES (1);
 INSERT INTO master.reason VALUES (0);
 INSERT INTO master.recipe VALUES (10), (11), (12), (13), (14), (15), (16), (17), (18);
 
+INSERT INTO master.area_master (id, name, description, local_area_id, continuous, plant_id, local_bu_id) VALUES
+    (1, 'TBM', 'GT Area', 1, 1, 1, 2), (2, 'Curing', 'Curing Area', 2, 1, 1, 3),
+    (5, 'Conveyor', 'Conveyor', 5, 1, 1, 6), (11, 'TUO', 'TUO Area', 11, 1, 1, 4),
+    (12, 'DBM', 'DBM Area', 12, 1, 1, 4);
+
 INSERT INTO master.rim_master (id, name, description, isactive, rim_id, local_area_id) VALUES
     (1,  'R20225',       'R20225',       true,  1,  12),
     (2,  'R195225',      'R195225',      true,  2,  12),
@@ -33,7 +38,8 @@ INSERT INTO master.material_size_lookup (material_id, rim_size, area_id) VALUES
     (100, '1', 12),                 -- duplicate row
     (107, '9', 12), (107, '1', 12), -- one inactive, one running -> WARN
     (108, '8', 12), (108, '2', 12), -- R225245 not running, R195225 running -> OK
-    (109, '13', 11),                -- R20225 in area 11; runs on 501 (R20225 area 12 id)
+    (109, '13', 11),                -- TUO-only mapping (R20225 area 11): not valid for DBM
+    (111, '13', 12),                -- DBM mapping that uses a TUO rim -> wrong area
     (110, '7', 12);                 -- mapped to None
 -- material 106: no mapping at all
 
@@ -43,7 +49,9 @@ INSERT INTO master.runningsize_lookup (equipment_id, rim_size) VALUES
     (504, '2'),                     -- R195225
     (505, '5'),                     -- R175195: no WIP needs it
     (508, '4'),                     -- R24: rim deactivated while running
-    (509, '7');                     -- None: not available
+    (509, '7'),                     -- None: not available
+    (510, '12'),                    -- DBM machine running a TUO rim (R225245 area 11)
+    (601, '13');                    -- TUO machine running R20225 (area 11)
 
 INSERT INTO curing.o_production
     (equipment_id, recipe_id, production_id, material_id, quantity, quality_status,
@@ -73,4 +81,5 @@ INSERT INTO curing.o_production
 -- DBM 506 is balancing tires but has no running rim size.
 INSERT INTO dbm.o_production (equipment_id, dtandtime, barcode, total_rank) VALUES
     (501, now() - interval '30 minutes', 'T0002', 'A'),
-    (506, now() - interval '20 minutes', 'X9999', 'B');
+    (506, now() - interval '20 minutes', 'X9999', 'B'),
+    (510, now() - interval '10 minutes', 'X9998', 'A');

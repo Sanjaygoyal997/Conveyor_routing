@@ -63,7 +63,7 @@ WIP_ARGS = """
     p_to             => now()::timestamp,
     p_wip_states     => %(wip_states)s::int[],
     p_ok_quality     => %(ok_quality)s::int[],
-    p_area_id        => %(area_id)s::int,
+    p_area_id        => COALESCE(%(area_id)s::int, master.fn_area_id('DBM')),
     p_exclude_at_dbm => %(exclude_at_dbm)s::boolean"""
 
 Hours = Query(48, ge=1, le=24 * 31, description="Look-back window in hours (default 2 days)")
@@ -115,7 +115,7 @@ def master_data_gaps(hours: int = Hours, area_id: Optional[int] = None):
         """SELECT * FROM master.fn_rim_master_data_gaps(
                p_from    => (now() - make_interval(hours => %(hours)s))::timestamp,
                p_to      => now()::timestamp,
-               p_area_id => %(area_id)s::int)""",
+               p_area_id => COALESCE(%(area_id)s::int, master.fn_area_id('DBM')))""",
         {"hours": hours, "area_id": area_id},
     )
 
@@ -125,11 +125,26 @@ def get_config():
     return fixes.config()
 
 
+@app.get("/api/areas")
+def areas():
+    """Areas that have rims (= machine types, e.g. TUO, DBM); DBM is the default."""
+    return query(
+        """SELECT a.local_area_id, a.name, a.description,
+                  a.local_area_id = master.fn_area_id('DBM') AS is_default
+           FROM   master.area_master a
+           WHERE  EXISTS (SELECT 1 FROM master.rim_master rm WHERE rm.local_area_id = a.local_area_id)
+           ORDER  BY a.local_area_id""",
+        {},
+    )
+
+
 @app.get("/api/running-sizes")
 def running_sizes(area_id: Optional[int] = None, hours: int = Hours):
     """Equipment in runningsize_lookup, plus DBM equipment seen in the window without a row."""
     return query(
         """SELECT r.equipment_id, r.rim_size, master.fn_rim_name(r.rim_size) AS rim_name,
+                  (SELECT a.name FROM master.area_master a
+                   WHERE  a.local_area_id = master.fn_rim_area(r.rim_size)) AS rim_area,
                   CASE master.fn_rim_name(r.rim_size)
                        WHEN 'NONE'         THEN 'NOT AVAILABLE'
                        WHEN 'UNIVERSALRIM' THEN 'UNIVERSAL'
@@ -137,7 +152,7 @@ def running_sizes(area_id: Optional[int] = None, hours: int = Hours):
                   r.created_by, r.dtandtime
            FROM   master.runningsize_lookup r
            UNION ALL
-           SELECT DISTINCT d.equipment_id, NULL, NULL, 'NOT SET', NULL, NULL::timestamp
+           SELECT DISTINCT d.equipment_id, NULL, NULL, 'DBM', 'NOT SET', NULL, NULL::timestamp
            FROM   dbm.o_production d
            WHERE  d.dtandtime >= (now() - make_interval(hours => %(hours)s))::timestamp
              AND  d.equipment_id IS NOT NULL
@@ -151,7 +166,8 @@ def running_sizes(area_id: Optional[int] = None, hours: int = Hours):
 def rims():
     """rim_master, for picking a rim in the fix dialogs."""
     return query(
-        """SELECT rim_id, name, master.fn_rim_key(name) AS rim_key, isactive, local_area_id, description
+        """SELECT rim_id, name, master.fn_rim_key(name) AS rim_key, isactive, local_area_id, description,
+                  (SELECT a.name FROM master.area_master a WHERE a.local_area_id = rim_master.local_area_id) AS area_name
            FROM   master.rim_master
            ORDER  BY isactive DESC NULLS LAST, master.fn_rim_key(name), rim_id""",
         {},
@@ -210,7 +226,8 @@ def barcode_check(
     return {
         "validation": query(
             """SELECT * FROM master.fn_validate_tire_barcode(
-                   %(barcode)s, %(equipment_id)s::int, %(area_id)s::int, %(ok_quality)s::int[])""",
+                   %(barcode)s, %(equipment_id)s::int, COALESCE(%(area_id)s::int, master.fn_area_id('DBM')),
+                   %(ok_quality)s::int[])""",
             params,
         ),
         "curing": query(
