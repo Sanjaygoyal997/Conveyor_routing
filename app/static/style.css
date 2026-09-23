@@ -164,3 +164,9 @@ input.num { width: 90px; }
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 12px; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .chip.bad { border-color: var(--ng-fg); color: var(--ng-fg); background: var(--ng-bg); }
 button.link { border: none; background: none; padding: 0 2px; color: var(--accent); font-size: 12px; cursor: pointer; }
+.qf-overview { max-height: 320px; overflow-y: auto; }
+.qf-overview table { font-size: 13px; }
+.qf-overview th, .qf-overview td { padding: 5px 8px; }
+.qf-overview tbody tr { cursor: pointer; }
+.qf-overview tbody tr:hover { background: var(--bg); }
+.qf-overview tr.qf-sel td { background: var(--info-bg); font-weight: 600; }

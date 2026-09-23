@@ -96,11 +96,34 @@ function renderMachinePart() {
     : m ? `<p>${pillHtml(m.rim_status)} Running ${esc(m.running_rim ?? "no rim")}.` +
           (m.last_balanced ? ` Last balanced ${esc(fmt(m.last_balanced))} (${m.tires_balanced} tires in 30 days).` : "") + `</p>`
     : `<p class="hint">New DBM ${esc(id)}: no rim set yet.</p>`;
-  const keep = $("#qfEqRim").dataset.want || "";
-  $("#qfEqRim").innerHTML = rimOptions(activeRims(), m?.running_rim ?? null);
+  // no rim yet: start on the suggested rim, or on an empty choice (never silently on the first rim)
+  const keep = $("#qfEqRim").dataset.want || (!m?.running_rim && chk?.suggested_rim_id ? String(chk.suggested_rim_id) : "");
+  $("#qfEqRim").innerHTML = (m?.running_rim ? "" : `<option value="">Select rim…</option>`) + rimOptions(activeRims(), m?.running_rim ?? null);
   if (keep) { $("#qfEqRim").value = keep; $("#qfEqRim").dataset.want = ""; }
   renderImpact();
   $("#qfSetRim").disabled = !CONFIG.writes_enabled || !/^\d+$/.test(id);
+}
+
+// Overview of every DBM and its current rim; the selected one is highlighted and shows the pending change.
+const rimLabel = (key) => (key == null ? null : RIMS.find((r) => r.rim_key === key)?.name ?? key);
+function renderOverview() {
+  const list = formMachines();
+  const id = currentEq();
+  const newRim = RIMS.find((r) => String(r.rim_id) === $("#qfEqRim").value);
+  const rows = [...list];
+  if (/^\d+$/.test(id) && !rows.some((m) => String(m.equipment_id) === id)) rows.push({ equipment_id: +id, running_rim: null, rim_status: "NOT SET", isNew: true });
+  const label = isDbmArea() ? "DBM" : "Machine";
+  $("#qfOverview").innerHTML = rows.length ? `<table><thead><tr><th>${label}</th><th>Rim</th><th>Status</th><th class="num">WIP tires fit</th></tr></thead><tbody>${
+    rows.map((m) => {
+      const chk = checkRow(m.equipment_id);
+      const sel = String(m.equipment_id) === id;
+      const changing = sel && newRim && newRim.rim_key !== m.running_rim;
+      const cur = rimLabel(m.running_rim) ?? "—";
+      const rim = changing ? `${esc(cur)} → <b>${esc(newRim.name)}</b>` : esc(cur);
+      const status = chk ? chk.status : m.rim_status;
+      return `<tr class="${sel ? "qf-sel" : ""}" data-qf-pick="${m.equipment_id}"><td>${label} ${m.equipment_id}${m.isNew ? " (new)" : ""}</td>` +
+        `<td class="m">${rim}</td><td>${pillHtml(status)}</td><td class="num">${chk ? chk.wip_tires_fit : ""}</td></tr>`;
+    }).join("")}</tbody></table>` : `<p class="empty">No DBMs found.</p>`;
 }
 
 function renderImpact() {
@@ -110,6 +133,7 @@ function renderImpact() {
   $("#qfImpact").textContent = rim && /^\d+$/.test(id)
     ? (m && rim.rim_key === m.running_rim ? "This is the rim it is running now." : changeoverImpact(id, rim.name))
     : "";
+  renderOverview();
 }
 
 // Open the Quick fix tab with a recipe or machine preselected (used by the Fix… buttons).
@@ -124,6 +148,14 @@ function openQuickFix({ recipe, eq } = {}) {
 $("#qfRecipe").addEventListener("change", (e) => { qf.recipe = e.target.value; renderRecipePart(); });
 $("#qfEq").addEventListener("change", (e) => { qf.eq = e.target.value; renderMachinePart(); });
 $("#qfEqOther").addEventListener("input", renderMachinePart);
+$("#qfOverview").addEventListener("click", (ev) => {
+  const tr = ev.target.closest("[data-qf-pick]");
+  if (!tr) return;
+  qf.eq = tr.dataset.qfPick;
+  if (![...$("#qfEq").options].some((o) => o.value === qf.eq)) { qf.eq = "__other"; $("#qfEqOther").value = tr.dataset.qfPick; }
+  $("#qfEq").value = qf.eq;
+  renderMachinePart();
+});
 $("#qfEqRim").addEventListener("change", renderImpact);
 
 $("#qfAddRim").addEventListener("click", () => {
