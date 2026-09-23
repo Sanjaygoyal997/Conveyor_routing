@@ -284,7 +284,7 @@ const EQUIPMENT_CHECKS = ["RUN_RIM_WRONG_AREA", "RUN_RIM_INACTIVE", "RUN_BLANK_R
 
 function fixActions(table, row, i) {
   const btn = (label, kind, extra = "") => `<button class="sm${kind === "primary" ? " fixbtn" : ""}" data-fix="${i}" ${extra}>${esc(label)}</button>`;
-  if (table === "recipes") return btn(row.status === "OK" ? "Rims…" : "Fix…", row.status === "OK" ? "" : "primary");
+  if (table === "recipes") return btn(row.status === "OK" ? "Rims…" : "Fix…", row.status === "OK" ? "" : "primary", `data-quick="1"`);
   if (table === "rims") {
     if (row.status === "NG_UNRESOLVED") return (row.materials || []).map((m) => btn(`Material ${m}`, "primary", `data-material="${m}"`)).join(" ");
     return btn(row.status.startsWith("NG") ? "Fix…" : "Change over…", row.status.startsWith("NG") ? "primary" : "");
@@ -295,24 +295,24 @@ function fixActions(table, row, i) {
     if (c === "MSL_DUPLICATE_ROW") return btn("Remove duplicates", "primary");
     return `<span class="hint" title="Fix this in the source system">—</span>`;
   }
-  if (table === "running") return btn("Set rim…", "");
+  if (table === "running") return btn("Set rim…", "", `data-quick="1"`);
   if (table === "machines") {
     const apply = row.suggested_rim ? btn(`Apply → ${row.suggested_rim}`, "primary", `data-apply="1"`) + " " : "";
-    return row.status === "INFO_NOT_AVAILABLE" && !apply ? btn("Set rim…", "") : apply + btn("Set rim…", "");
+    return apply + btn("Set rim…", "", `data-quick="1"`);
   }
   return "";
 }
 
 function onFix(table, row, el) {
-  if (table === "recipes") return materialDialog(row.material_id, row);
+  if (table === "recipes") return openQuickFix({ recipe: `${row.recipe_id ?? ""}|${row.material_id}` });
   if (table === "rims") return el.dataset.material ? materialDialog(+el.dataset.material) : rimDialog(row.rim_size);
-  if (table === "running") return equipmentDialog(row.equipment_id);
+  if (table === "running") return openQuickFix({ eq: row.equipment_id });
   if (table === "machines") {
     if (el.dataset.apply) {
       return loadLookups().then(() => write("PUT", `/api/fix/running/${row.equipment_id}`, { rim_id: row.suggested_rim_id },
         `Change machine ${row.equipment_id} to rim ${row.suggested_rim}?`, changeoverImpact(row.equipment_id, row.suggested_rim)));
     }
-    return equipmentDialog(row.equipment_id);
+    return openQuickFix({ eq: row.equipment_id });
   }
   if (table === "gaps") {
     const f = row.fix_ref || {};

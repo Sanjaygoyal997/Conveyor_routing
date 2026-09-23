@@ -51,6 +51,7 @@ Only rims that are active in `rim_master` can be picked.
 
 | Tab | What it shows |
 |---|---|
+| **Quick fix** (opens first) | Two simple forms. **Recipe rims**: pick a recipe (issues first), see its allowed rims, add one from a dropdown or remove one. **Machine running rim**: pick a machine, pick a rim, see how many WIP tires it frees or blocks, then save. Suggested changeovers are buttons that fill in the form. The Fix… buttons on recipes and machines open this tab with the row selected. |
 | **Validate** button + summary | WIP tires, recipe/material groups, groups with issues, blocked tires, rim sizes not running, master-data errors |
 | WIP recipes | `fn_wip_rim_readiness`: one row per recipe + material in WIP |
 | Machines | `fn_machine_rim_check`: per machine, the WIP tires it can take, tires that can only go there, and a suggested changeover (**Apply** button) |

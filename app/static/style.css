@@ -147,3 +147,20 @@ input.num { width: 90px; }
 .toast { position: fixed; right: 16px; bottom: 16px; max-width: min(420px, calc(100vw - 32px)); padding: 10px 14px; border-radius: 8px; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,.18); z-index: 10; }
 .toast.good { background: var(--ok-bg); color: var(--ok-fg); }
 .toast.bad  { background: var(--ng-bg); color: var(--ng-fg); }
+
+/* ---- quick fix --------------------------------------------------------------- */
+.qf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-top: 12px; }
+.qf-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; display: grid; gap: 10px; align-content: start; }
+.qf-card h3 { margin: 0; font-size: 16px; }
+.qf-card .hint { margin: 0; }
+.qf-card p { margin: 0; }
+.qf-field { display: grid; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.qf-field select { width: 100%; font-size: 14px; color: var(--text); font-weight: 400; }
+.qf-card > button.primary { justify-self: start; }
+.qf-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.qf-suggest { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.qf-impact { font-size: 13px; padding: 8px 10px; border-radius: 6px; background: var(--info-bg); color: var(--info-fg); }
+.qf-impact:empty { display: none; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 12px; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.chip.bad { border-color: var(--ng-fg); color: var(--ng-fg); background: var(--ng-bg); }
+button.link { border: none; background: none; padding: 0 2px; color: var(--accent); font-size: 12px; cursor: pointer; }

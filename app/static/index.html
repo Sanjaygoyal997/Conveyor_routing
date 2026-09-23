@@ -49,7 +49,8 @@
   <div id="error" class="error" role="alert" hidden></div>
 
   <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="recipes" aria-selected="true">WIP recipes</button>
+    <button role="tab" data-tab="quick" aria-selected="true">Quick fix</button>
+    <button role="tab" data-tab="recipes">WIP recipes</button>
     <button role="tab" data-tab="machines">Machines</button>
     <button role="tab" data-tab="rims">Rim sizes</button>
     <button role="tab" data-tab="gaps">Master data gaps</button>
@@ -58,7 +59,30 @@
     <button role="tab" data-tab="audit">Change log</button>
   </nav>
 
-  <section class="panel" data-panel="recipes">
+  <section class="panel" data-panel="quick">
+    <div class="qf-grid">
+      <div class="qf-card">
+        <h3>Recipe rims</h3>
+        <p class="hint">Which rims can this recipe's tires run on (for the selected machine area)?</p>
+        <label class="qf-field">Recipe <select id="qfRecipe"><option>Loading&hellip;</option></select></label>
+        <div id="qfRecipeInfo"></div>
+        <label class="qf-field">Add rim <select id="qfRecipeRim"></select></label>
+        <button id="qfAddRim" class="primary">Add rim to recipe</button>
+      </div>
+      <div class="qf-card">
+        <h3>Machine running rim</h3>
+        <p class="hint">Which rim is fitted on this machine now?</p>
+        <div id="qfSuggest" class="qf-suggest"></div>
+        <label class="qf-field">Machine <select id="qfEq"><option>Loading&hellip;</option></select></label>
+        <div id="qfEqInfo"></div>
+        <label class="qf-field">Running rim <select id="qfEqRim"></select></label>
+        <p id="qfImpact" class="qf-impact"></p>
+        <button id="qfSetRim" class="primary">Set running rim</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" data-panel="recipes" hidden>
     <div class="toolbar">
       <input type="search" class="search" data-for="recipes" placeholder="Filter recipe, material, rim, status&hellip;">
       <label class="check"><input type="checkbox" class="issuesOnly" data-for="recipes"> Issues only</label>
@@ -142,5 +166,6 @@
 
 <script src="/static/app.js"></script>
 <script src="/static/fixes.js"></script>
+<script src="/static/quickfix.js"></script>
 </body>
 </html>

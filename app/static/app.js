@@ -245,6 +245,7 @@ async function validate() {
     setRows("rims", rims);
     setRows("gaps", gaps);
     renderSummary(recipes, rims, gaps, machines);
+    if (typeof renderQuickFix === "function") renderQuickFix();
   } catch (e) {
     showError(e.message);
   } finally {
@@ -325,7 +326,7 @@ async function loadAreas() {
     $("#areaId").innerHTML = `<option value="">All areas</option>`;
   }
 }
-loadAreas().then(loadRunning);
+loadAreas().then(() => Promise.all([loadRunning(), validate()]));
 $("#areaId").addEventListener("change", () => { loadRunning(); if (state.recipes) validate(); });
 
 api("/api/health")
