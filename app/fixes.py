@@ -6,7 +6,9 @@ X-Admin-Token. Each change runs in one transaction together with a row in
 master.rim_validation_audit holding the before/after values.
 
 Rim sizes are always picked from master.rim_master (active rims only) and are
-written as rim_master.name, or as rim_id when RIM_SIZE_VALUE=rim_id.
+written as rim_master.rim_id (default), or as the name when RIM_SIZE_VALUE=name.
+Rims are compared by name (master.fn_rim_name), since rim_master has one
+rim_id per rim per area.
 """
 import hmac
 import os
@@ -22,7 +24,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 STATEMENT_TIMEOUT_MS = int(os.environ.get("STATEMENT_TIMEOUT_MS", "60000"))
 ALLOW_WRITES = os.environ.get("ALLOW_WRITES", "false").lower() in ("1", "true", "yes")
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
-RIM_SIZE_VALUE = os.environ.get("RIM_SIZE_VALUE", "name")
+RIM_SIZE_VALUE = os.environ.get("RIM_SIZE_VALUE", "rim_id")
 
 router = APIRouter()
 
@@ -88,7 +90,7 @@ def active_rim(conn, rim_id: int, area_id: Optional[int]) -> dict:
 
 
 def rim_value(rim: dict) -> str:
-    return str(rim["rim_id"]) if RIM_SIZE_VALUE == "rim_id" else rim["name"]
+    return rim["name"] if RIM_SIZE_VALUE == "name" else str(rim["rim_id"])
 
 
 # ---- request bodies ---------------------------------------------------------
@@ -118,10 +120,12 @@ def add_material_rim(body: MaterialRimIn, user: str = Depends(operator)):
     """Map an active rim to a material (a material may accept several rims)."""
     def tx(conn):
         rim = active_rim(conn, body.rim_id, body.area_id)
+        if (rim["name"] or "").strip().upper() == "NONE":
+            raise HTTPException(409, "Rim None means 'equipment not available' and can't be mapped to a material")
         exists = conn.execute(
             """SELECT id FROM master.material_size_lookup
                WHERE material_id = %s AND area_id IS NOT DISTINCT FROM %s
-                 AND master.fn_rim_key(rim_size) = master.fn_rim_key(%s)""",
+                 AND master.fn_rim_name(rim_size) = master.fn_rim_name(%s)""",
             (body.material_id, body.area_id, rim_value(rim)),
         ).fetchone()
         if exists:
@@ -142,13 +146,13 @@ def remove_material_rim(row_id: int, user: str = Depends(operator)):
     def tx(conn):
         row = conn.execute(
             """DELETE FROM master.material_size_lookup t WHERE t.id = %s
-               RETURNING t.material_id, t.rim_size, to_jsonb(t.*) AS before""",
+               RETURNING t.material_id, master.fn_rim_name(t.rim_size) AS rim_name, to_jsonb(t.*) AS before""",
             (row_id,),
         ).fetchone()
         if not row:
             raise HTTPException(404, f"Mapping id {row_id} not found")
         audit(conn, user, "unmap_rim", "material_size_lookup", f"id={row_id}", before=row["before"])
-        return {"ok": True, "message": f"Removed rim {row['rim_size']} from material {row['material_id']}"}
+        return {"ok": True, "message": f"Removed rim {row['rim_name']} from material {row['material_id']}"}
     return run_write(tx)
 
 
@@ -177,10 +181,10 @@ def dedupe_material_rim(body: DedupeIn, user: str = Depends(operator)):
         rows = conn.execute(
             """DELETE FROM master.material_size_lookup t
                WHERE  t.material_id = %(m)s AND t.area_id IS NOT DISTINCT FROM %(a)s
-                 AND  master.fn_rim_key(t.rim_size) = master.fn_rim_key(%(r)s)
+                 AND  master.fn_rim_name(t.rim_size) = master.fn_rim_name(%(r)s)
                  AND  t.id > (SELECT min(k.id) FROM master.material_size_lookup k
                               WHERE k.material_id = %(m)s AND k.area_id IS NOT DISTINCT FROM %(a)s
-                                AND master.fn_rim_key(k.rim_size) = master.fn_rim_key(%(r)s))
+                                AND master.fn_rim_name(k.rim_size) = master.fn_rim_name(%(r)s))
                RETURNING t.id, to_jsonb(t.*) AS before""",
             {"m": body.material_id, "a": body.area_id, "r": body.rim_size},
         ).fetchall()

@@ -1,32 +1,49 @@
--- Scenario data: one clean path plus one example of each gap.
+-- Scenario data built on the plant's rim_master: rim_size columns store rim_id.
+-- Rims 4 (R24, area 12) and 9 (R17520, area 12) are made inactive for the tests.
 INSERT INTO master.users VALUES (1);
 INSERT INTO master.reason VALUES (0);
-INSERT INTO master.recipe VALUES (10), (11), (12), (13), (14), (15), (16), (17);
+INSERT INTO master.recipe VALUES (10), (11), (12), (13), (14), (15), (16), (17), (18);
 
-INSERT INTO master.rim_master (id, name, isactive, rim_id, local_area_id) VALUES
-    (1, '15', true, 1, 1),
-    (2, '16', true, 2, 1),
-    (3, '17', false, 3, 1),       -- inactive rim
-    (4, '18 ', true, 4, 1),       -- untrimmed name
-    (5, '19', true, 5, 1),        -- nothing runs 19
-    (6, '20', false, 6, 1),       -- inactive
-    (7, '21', true, 7, 1);        -- running, no WIP needs it
+INSERT INTO master.rim_master (id, name, description, isactive, rim_id, local_area_id) VALUES
+    (1,  'R20225',       'R20225',       true,  1,  12),
+    (2,  'R195225',      'R195225',      true,  2,  12),
+    (3,  'R22524',       'R22524',       true,  3,  12),
+    (4,  'R24',          'R24',          false, 4,  12),   -- inactive (test)
+    (5,  'R175195',      'R175195',      true,  5,  12),
+    (6,  'UniversalRIM', 'UniversalRIM', true,  6,  12),
+    (7,  'None',         'None',         true,  7,  12),
+    (8,  'R225245',      'R225245',      true,  8,  12),
+    (9,  'R17520',       'R17520',       false, 9,  12),   -- inactive (test)
+    (10, 'R175195',      'R175195',      true,  10, 11),
+    (11, 'R195225',      'R195225',      true,  11, 11),
+    (12, 'R225245',      'R225245',      true,  12, 11),
+    (13, 'R20225',       'R20225',       true,  13, 11),
+    (14, 'R17520',       'R17520',       true,  14, 11),
+    (15, 'UniversalRIM', 'UniversalRIM', true,  15, 11),
+    (16, 'None',         'None',         true,  16, 11),
+    (17, 'R22524',       'R22524',       true,  17, 11);
 
 INSERT INTO master.material_size_lookup (material_id, rim_size, area_id) VALUES
-    (100, '15', 1),               -- OK
-    (101, '16', 1), (101, '15', 1), -- two allowed rims, both running -> OK
-    (102, '17', 1),               -- only rim is inactive
-    (103, '20', 1),               -- only rim is inactive
-    (104, '19', 1),               -- no equipment running 19
-    (105, '18', NULL),            -- OK via trimmed match, NULL area
-    (100, '15', 1),               -- duplicate row
-    (107, '17', 1), (107, '15', 1), -- one inactive, one running -> WARN
-    (108, '19', 1), (108, '16', 1); -- 19 not running, 16 running -> OK
+    (100, '1', 12),                 -- R20225 -> OK
+    (101, '1', 12), (101, '2', 12), -- R20225 + R195225, both running -> OK
+    (102, '9', 12),                 -- only rim (R17520 area 12) is inactive
+    (103, '4', 12),                 -- only rim (R24) is inactive
+    (104, '8', 12),                 -- R225245, nobody running it
+    (105, '3', NULL),               -- R22524, no area
+    (100, '1', 12),                 -- duplicate row
+    (107, '9', 12), (107, '1', 12), -- one inactive, one running -> WARN
+    (108, '8', 12), (108, '2', 12), -- R225245 not running, R195225 running -> OK
+    (109, '13', 11),                -- R20225 in area 11; runs on 501 (R20225 area 12 id)
+    (110, '7', 12);                 -- mapped to None
 -- material 106: no mapping at all
 
 INSERT INTO master.runningsize_lookup (equipment_id, rim_size) VALUES
-    (501, '15'), (502, '15 '), (503, '18'), (504, '16'), (505, '21'),
-    (508, '17');                  -- running a rim that has been deactivated
+    (501, '1'), (502, '1 '),        -- R20225 (502 stored with a trailing space)
+    (503, '3'),                     -- R22524
+    (504, '2'),                     -- R195225
+    (505, '5'),                     -- R175195: no WIP needs it
+    (508, '4'),                     -- R24: rim deactivated while running
+    (509, '7');                     -- None: not available
 
 INSERT INTO curing.o_production
     (equipment_id, recipe_id, production_id, material_id, quantity, quality_status,
@@ -43,7 +60,8 @@ INSERT INTO curing.o_production
     (1, 10, 'T0010', 100, 1, 1, 0, 600, now() - interval '3 hour', 1, 1),
     (2, 11, 'T0010', 101, 1, 1, 0, 600, now() - interval '1 hour', 1, 1),   -- duplicate barcode, other material
     (8, 16, 'T0012', 107, 1, 1, 0, 600, now() - interval '1 hour', 1, 1),
-    (9, 17, 'T0013', 108, 1, 1, 0, 600, now() - interval '1 hour', 1, 1);
+    (9, 17, 'T0013', 108, 1, 1, 0, 600, now() - interval '1 hour', 1, 1),
+    (10, 18, 'T0014', 109, 1, 1, 0, 600, now() - interval '1 hour', 1, 1);
 
 -- Outside the default 2-day window: not WIP.
 INSERT INTO curing.o_production

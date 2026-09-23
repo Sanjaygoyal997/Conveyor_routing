@@ -4,7 +4,10 @@
 --
 -- A material may be mapped to several rim sizes in material_size_lookup; the
 -- tire can then run on any of them. It is routable when at least one of its
--- ACTIVE rim sizes is running on some equipment.
+-- ACTIVE rim sizes is running on some equipment. Rims are compared by
+-- rim_master name (rim_size stores rim_id; see 00_helpers.sql).
+-- Equipment running UNIVERSALRIM takes any tire that has an active rim;
+-- equipment running NONE is not available and takes no tires.
 --
 -- WIP = latest record per barcode (production_id) in curing.o_production cured
 -- in [p_from, p_to) (default: last 2 days), optionally filtered to the given
@@ -67,33 +70,56 @@ grp AS (
     FROM   wip w
     GROUP  BY w.recipe_id, w.material_id
 ),
--- one row per (material, allowed rim size) with its rim_master status
+-- one row per (material, allowed rim name); active if any mapped rim_id with that name is active
 msize AS (
-    SELECT DISTINCT m.material_id, master.fn_rim_key(m.rim_size) AS rim_key
+    SELECT m.material_id,
+           master.fn_rim_name(m.rim_size)                                         AS rim_key,
+           bool_or(master.fn_rim_status(m.rim_size, p_area_id) = 'ACTIVE')         AS is_active
     FROM   master.material_size_lookup m
     WHERE  m.material_id IN (SELECT g.material_id FROM grp g)
       AND  master.fn_rim_key(m.rim_size) IS NOT NULL
       AND  (p_area_id IS NULL OR m.area_id = p_area_id OR m.area_id IS NULL)
+    GROUP  BY m.material_id, master.fn_rim_name(m.rim_size)
+),
+running AS (
+    SELECT r.equipment_id, master.fn_rim_name(r.rim_size) AS rim_key
+    FROM   master.runningsize_lookup r
+    WHERE  master.fn_rim_key(r.rim_size) IS NOT NULL
+      AND  master.fn_rim_name(r.rim_size) <> 'NONE'
+),
+universal AS (
+    SELECT array_agg(u.equipment_id ORDER BY u.equipment_id) AS equipment
+    FROM   running u WHERE u.rim_key = 'UNIVERSALRIM'
 ),
 msize_checked AS (
-    SELECT s.material_id, s.rim_key,
-           master.fn_rim_status(s.rim_key, p_area_id) AS rim_status,
+    SELECT s.material_id, s.rim_key, s.is_active,
            (SELECT array_agg(r.equipment_id ORDER BY r.equipment_id)
-            FROM   master.runningsize_lookup r
-            WHERE  master.fn_rim_key(r.rim_size) = s.rim_key) AS equipment
+            FROM   running r WHERE r.rim_key = s.rim_key) AS equipment
     FROM   msize s
 ),
-per_material AS (
+per_material_own AS (
     SELECT c.material_id,
-           array_agg(c.rim_key ORDER BY c.rim_key)                                   AS allowed,
-           array_agg(c.rim_key ORDER BY c.rim_key) FILTER (WHERE c.rim_status <> 'ACTIVE') AS inactive,
-           array_agg(c.rim_key ORDER BY c.rim_key)
-               FILTER (WHERE c.rim_status = 'ACTIVE' AND c.equipment IS NOT NULL)    AS running,
+           array_agg(c.rim_key ORDER BY c.rim_key)                                        AS allowed,
+           array_agg(c.rim_key ORDER BY c.rim_key) FILTER (WHERE NOT c.is_active)          AS inactive,
+           array_agg(c.rim_key ORDER BY c.rim_key) FILTER (WHERE c.is_active AND c.equipment IS NOT NULL) AS running,
+           bool_or(c.is_active)                                                            AS has_active,
            (SELECT array_agg(DISTINCT e ORDER BY e)
             FROM   msize_checked c2, unnest(c2.equipment) e
-            WHERE  c2.material_id = c.material_id AND c2.rim_status = 'ACTIVE')      AS eligible
+            WHERE  c2.material_id = c.material_id AND c2.is_active)                        AS eligible
     FROM   msize_checked c
     GROUP  BY c.material_id
+),
+-- add UNIVERSALRIM equipment for every material that has an active rim
+per_material AS (
+    SELECT o.material_id, o.allowed, o.inactive,
+           CASE WHEN o.has_active AND u.equipment IS NOT NULL
+                     AND NOT ('UNIVERSALRIM' = ANY (COALESCE(o.running, '{}')))
+                THEN COALESCE(o.running, '{}') || 'UNIVERSALRIM'::text
+                ELSE o.running END AS running,
+           CASE WHEN o.has_active AND u.equipment IS NOT NULL
+                THEN (SELECT array_agg(DISTINCT e ORDER BY e) FROM unnest(COALESCE(o.eligible, '{}') || u.equipment) e)
+                ELSE o.eligible END AS eligible
+    FROM   per_material_own o CROSS JOIN universal u
 ),
 final AS (
     SELECT CASE
@@ -132,6 +158,8 @@ $$;
 --                       another rim that is running
 --   INFO_NO_WIP         equipment runs this rim but nothing in WIP accepts it
 --                       (changeover candidate)
+--   INFO_UNIVERSAL      UNIVERSALRIM equipment; wip_tires = tires it can take
+-- Equipment running NONE is not available and is left out.
 CREATE FUNCTION master.fn_wip_rim_demand(
     p_from           timestamp DEFAULT (now() - interval '2 days')::timestamp,
     p_to             timestamp DEFAULT now()::timestamp,
@@ -170,14 +198,22 @@ demand AS (
     GROUP  BY b.rim_key
 ),
 running AS (
-    SELECT master.fn_rim_key(r.rim_size) AS rim_key,
+    SELECT master.fn_rim_name(r.rim_size) AS rim_key,
            array_agg(r.equipment_id ORDER BY r.equipment_id) AS equipment
     FROM   master.runningsize_lookup r
     WHERE  master.fn_rim_key(r.rim_size) IS NOT NULL
+      AND  master.fn_rim_name(r.rim_size) <> 'NONE'        -- not available
     GROUP  BY 1
+),
+-- tires a UNIVERSALRIM equipment can take: every tire with an active rim
+universal_wip AS (
+    SELECT COALESCE(sum(r.wip_tires), 0)::bigint AS wip_tires
+    FROM   readiness r
+    WHERE  r.status NOT IN ('NG_NO_MATERIAL_SIZE', 'NG_NO_ACTIVE_RIM')
 )
 SELECT x.* FROM (
     SELECT CASE
+             WHEN rn.rim_key = 'UNIVERSALRIM'                    THEN 'INFO_UNIVERSAL'
              WHEN d.rim_key IS NULL AND d.wip_tires IS NOT NULL THEN 'NG_UNRESOLVED'
              WHEN rn.equipment IS NULL AND d.blocked_tires > 0   THEN 'NG_NOT_RUNNING'
              WHEN rn.equipment IS NULL                           THEN 'INFO_NOT_RUNNING'
@@ -185,7 +221,8 @@ SELECT x.* FROM (
              ELSE 'OK'
            END                              AS status,
            COALESCE(d.rim_key, rn.rim_key)  AS rim_size,
-           COALESCE(d.wip_tires, 0)         AS wip_tires,
+           CASE WHEN rn.rim_key = 'UNIVERSALRIM' THEN (SELECT uw.wip_tires FROM universal_wip uw)
+                ELSE COALESCE(d.wip_tires, 0) END AS wip_tires,
            COALESCE(d.blocked_tires, 0)     AS blocked_tires,
            d.recipes, d.materials,
            rn.equipment                     AS equipment_running

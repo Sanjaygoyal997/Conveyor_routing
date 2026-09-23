@@ -71,8 +71,10 @@ const TABLES = {
     statusKey: "rim_master_status",
     columns: [
       { key: "equipment_id", label: "Equipment", num: true },
-      { key: "rim_size", label: "Running rim size" },
-      { key: "rim_master_status", label: "Rim master", pill: true, pillMap: { ACTIVE: "ok", INACTIVE: "ng", "NOT SET": "ng" } },
+      { key: "rim_name", label: "Running rim" },
+      { key: "rim_size", label: "rim_id" },
+      { key: "rim_master_status", label: "Status", pill: true,
+        pillMap: { ACTIVE: "ok", INACTIVE: "ng", "NOT SET": "ng", "NOT AVAILABLE": "warn", UNIVERSAL: "info" } },
       { key: "created_by", label: "Set by" },
       { key: "dtandtime", label: "Set at" },
       { key: "_fix", label: "", actions: true },

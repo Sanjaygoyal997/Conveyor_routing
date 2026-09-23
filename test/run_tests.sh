@@ -17,45 +17,60 @@ check() {  # check <description> <sql returning text> <expected>
     if [[ "$got" == "$3" ]]; then echo "PASS  $1"; else echo "FAIL  $1"; echo "  expected: $3"; echo "  got:      $got"; fail=1; fi
 }
 
+R="master.fn_wip_rim_readiness(p_wip_states => '{1}')"
+
 check "WIP readiness per recipe/material (state 1, not yet at DBM)" \
-  "SELECT string_agg(material_id || ':' || status || ':' || wip_tires, ' ' ORDER BY material_id)
-   FROM master.fn_wip_rim_readiness(p_wip_states => '{1}')" \
-  "100:OK:1 101:OK:2 102:NG_NO_ACTIVE_RIM:1 103:NG_NO_ACTIVE_RIM:1 104:NG_NO_EQUIPMENT_RUNNING:1 105:OK:1 106:NG_NO_MATERIAL_SIZE:1 107:WARN_SOME_RIMS_INACTIVE:1 108:OK:1"
+  "SELECT string_agg(material_id || ':' || status || ':' || wip_tires, ' ' ORDER BY material_id) FROM $R" \
+  "100:OK:1 101:OK:2 102:NG_NO_ACTIVE_RIM:1 103:NG_NO_ACTIVE_RIM:1 104:NG_NO_EQUIPMENT_RUNNING:1 105:OK:1 106:NG_NO_MATERIAL_SIZE:1 107:WARN_SOME_RIMS_INACTIVE:1 108:OK:1 109:OK:1"
 
 check "Including tires already at DBM" \
   "SELECT wip_tires FROM master.fn_wip_rim_readiness(p_wip_states => '{1}', p_exclude_at_dbm => false) WHERE material_id = 100" \
   "2"
 
-check "Multi-rim material: eligible on every running allowed rim" \
-  "SELECT running_rim_sizes::text || ' ' || eligible_equipment::text FROM master.fn_wip_rim_readiness(p_wip_states => '{1}') WHERE material_id = 101" \
-  "{15,16} {501,502,504}"
+check "Multi-rim material: eligible on every running allowed rim (by rim name)" \
+  "SELECT running_rim_sizes::text || ' ' || eligible_equipment::text FROM $R WHERE material_id = 101" \
+  "{R195225,R20225} {501,502,504}"
 
 check "Multi-rim material with one inactive rim" \
-  "SELECT inactive_rim_sizes::text || ' ' || eligible_equipment::text FROM master.fn_wip_rim_readiness(p_wip_states => '{1}') WHERE material_id = 107" \
-  "{17} {501,502}"
+  "SELECT inactive_rim_sizes::text || ' ' || eligible_equipment::text FROM $R WHERE material_id = 107" \
+  "{R17520} {501,502}"
 
-check "WIP rim demand vs running equipment" \
+check "Area-11 rim id matches area-12 equipment by name" \
+  "SELECT allowed_rim_sizes::text || ' ' || eligible_equipment::text FROM $R WHERE material_id = 109" \
+  "{R20225} {501,502}"
+
+check "Equipment running None is never eligible" \
+  "SELECT count(*) FROM $R WHERE 509 = ANY (eligible_equipment)" "0"
+
+check "WIP rim demand vs running equipment (None left out)" \
   "SELECT string_agg(COALESCE(rim_size,'?') || ':' || status || ':' || wip_tires || '/' || blocked_tires, ' ' ORDER BY rim_size NULLS FIRST)
    FROM master.fn_wip_rim_demand(p_wip_states => '{1}')" \
-  "?:NG_UNRESOLVED:3/3 15:OK:4/0 16:OK:3/0 17:INFO_NO_WIP:0/0 18:OK:1/0 19:NG_NOT_RUNNING:2/1 21:INFO_NO_WIP:0/0"
+  "?:NG_UNRESOLVED:3/3 R175195:INFO_NO_WIP:0/0 R195225:OK:3/0 R20225:OK:5/0 R22524:OK:1/0 R225245:NG_NOT_RUNNING:2/1 R24:INFO_NO_WIP:0/0"
 
 check "Master data gap codes" \
   "SELECT string_agg(DISTINCT check_code, ' ') FROM master.fn_rim_master_data_gaps()" \
-  "DBM_NO_RUNNING_SIZE FORMAT_DRIFT MSL_DUPLICATE_ROW MSL_MATERIAL_NOT_RUNNABLE MSL_MULTI_RIM MSL_NULL_AREA MSL_RIM_INACTIVE MSL_SIZE_NOT_RUNNING PROD_DUPLICATE_BARCODE PROD_MATERIAL_NO_SIZE PROD_NO_RECIPE RUN_RIM_INACTIVE"
+  "DBM_NO_RUNNING_SIZE FORMAT_DRIFT MSL_DUPLICATE_ROW MSL_MATERIAL_NOT_RUNNABLE MSL_MULTI_RIM MSL_NONE_RIM MSL_NULL_AREA MSL_RIM_INACTIVE MSL_SIZE_NOT_RUNNING PROD_DUPLICATE_BARCODE PROD_MATERIAL_NO_SIZE PROD_NO_RECIPE RUN_RIM_INACTIVE"
 
 check "Inactive rim is ERROR only when no other active rim" \
   "SELECT string_agg(severity || ':' || split_part(detail, ' ', 1), ' ' ORDER BY severity, detail) FROM master.fn_rim_master_data_gaps() WHERE check_code = 'MSL_RIM_INACTIVE'" \
   "ERROR:material_id=102 ERROR:material_id=103 WARN:material_id=107"
 
+check "Same rim name in areas 11 and 12 is not a duplicate" \
+  "SELECT count(*) FROM master.fn_rim_master_data_gaps() WHERE check_code = 'RIM_DUPLICATE_NAME'" "0"
+
 check "Barcode OK on matching equipment" \
   "SELECT status FROM master.fn_validate_tire_barcode('T0001', 502)" "OK"
 check "Barcode mismatch on other equipment" \
-  "SELECT message FROM master.fn_validate_tire_barcode('T0001', 504)" "Tire accepts 15, equipment running 16"
+  "SELECT message FROM master.fn_validate_tire_barcode('T0001', 504)" "Tire accepts R20225, equipment running R195225"
 check "Multi-rim barcode OK on either rim" \
   "SELECT string_agg(status || ':' || rim_size, ' ') FROM (SELECT * FROM master.fn_validate_tire_barcode('T0003', 504) UNION ALL SELECT * FROM master.fn_validate_tire_barcode('T0003', 501)) x" \
-  "OK:16 OK:15"
+  "OK:R195225 OK:R20225"
 check "Multi-rim barcode routing candidates" \
-  "SELECT string_agg(equipment_id || '=' || rim_size, ',' ORDER BY equipment_id) FROM master.fn_validate_tire_barcode('T0003')" "501=15,502=15,504=16"
+  "SELECT string_agg(equipment_id || '=' || rim_size, ',' ORDER BY equipment_id) FROM master.fn_validate_tire_barcode('T0003')" "501=R20225,502=R20225,504=R195225"
+check "Area-11 rim barcode OK on area-12 equipment" \
+  "SELECT status FROM master.fn_validate_tire_barcode('T0014', 501)" "OK"
+check "Barcode on equipment running None" \
+  "SELECT status FROM master.fn_validate_tire_barcode('T0001', 509)" "NG_EQUIPMENT_NOT_AVAILABLE"
 check "No active rim" \
   "SELECT status FROM master.fn_validate_tire_barcode('T0004')" "NG_NO_ACTIVE_RIM"
 check "Barcode routing candidates" \
@@ -66,6 +81,18 @@ check "Unknown barcode" \
   "SELECT status FROM master.fn_validate_tire_barcode('NOPE')" "NG_BARCODE_NOT_FOUND"
 check "Quality hold" \
   "SELECT status FROM master.fn_validate_tire_barcode('T0009', 501, NULL, '{1}')" "NG_QUALITY_HOLD"
+
+# UniversalRIM: switch 505 to UniversalRIM, check, then switch back
+"${PSQL[@]}" -c "UPDATE master.runningsize_lookup SET rim_size = '6' WHERE equipment_id = 505"
+check "UniversalRIM equipment takes tires with no running rim" \
+  "SELECT status || ' ' || eligible_equipment::text FROM $R WHERE material_id = 104" "OK {505}"
+check "UniversalRIM does not fix materials without an active rim" \
+  "SELECT status FROM $R WHERE material_id = 102" "NG_NO_ACTIVE_RIM"
+check "UniversalRIM barcode check" \
+  "SELECT status FROM master.fn_validate_tire_barcode('T0006', 505)" "OK"
+check "UniversalRIM row in rim demand" \
+  "SELECT status || ':' || wip_tires FROM master.fn_wip_rim_demand(p_wip_states => '{1}') WHERE rim_size = 'UNIVERSALRIM'" "INFO_UNIVERSAL:8"
+"${PSQL[@]}" -c "UPDATE master.runningsize_lookup SET rim_size = '5' WHERE equipment_id = 505"
 
 if python3 -c "import fastapi, psycopg, httpx" 2>/dev/null; then
     DATABASE_URL="dbname=$DB" python3 test/test_api.py || fail=1

@@ -28,44 +28,54 @@ def status_of(material_id):
     return next((r["status"] for r in rows if r["material_id"] == material_id), None)
 
 
-def rim_id(name):
-    return next(r["rim_id"] for r in c.get("/api/rims").json() if r["rim_key"] == name)
-
+# rim_master ids (see test/seed.sql): 1 R20225/12, 2 R195225/12, 4 R24/12 (inactive), 6 UniversalRIM/12,
+# 7 None/12, 8 R225245/12, 9 R17520/12 (inactive), 13 R20225/11
+BODY = {"material_id": 106, "rim_id": 1, "area_id": 12}
 
 # -- guards
 check("API: no operator name -> 422",
-      c.post("/api/fix/material-rim", json={"material_id": 106, "rim_id": 1}, headers={"X-Admin-Token": "secret"}).status_code, 422)
+      c.post("/api/fix/material-rim", json=BODY, headers={"X-Admin-Token": "secret"}).status_code, 422)
 check("API: wrong admin token -> 401",
-      c.post("/api/fix/material-rim", json={"material_id": 106, "rim_id": 1}, headers={"X-User": "x", "X-Admin-Token": "bad"}).status_code, 401)
+      c.post("/api/fix/material-rim", json=BODY, headers={"X-User": "x", "X-Admin-Token": "bad"}).status_code, 401)
 fixes.ALLOW_WRITES = False
-check("API: writes switched off -> 403",
-      c.post("/api/fix/material-rim", json={"material_id": 106, "rim_id": 1}, headers=H).status_code, 403)
+check("API: writes switched off -> 403", c.post("/api/fix/material-rim", json=BODY, headers=H).status_code, 403)
 fixes.ALLOW_WRITES = True
 
-# -- NG_NO_MATERIAL_SIZE: map a rim
+# -- NG_NO_MATERIAL_SIZE: map a rim (stored as rim_id)
 check("API: before fix material 106", status_of(106), "NG_NO_MATERIAL_SIZE")
-r = c.post("/api/fix/material-rim", json={"material_id": 106, "rim_id": rim_id("15"), "area_id": 1}, headers=H)
-check("API: map rim 15 to material 106", (r.status_code, status_of(106)), (200, "OK"))
-check("API: mapping the same rim twice -> 409",
-      c.post("/api/fix/material-rim", json={"material_id": 106, "rim_id": rim_id("15"), "area_id": 1}, headers=H).status_code, 409)
+r = c.post("/api/fix/material-rim", json=BODY, headers=H)
+check("API: map R20225 to material 106", (r.status_code, status_of(106)), (200, "OK"))
+check("API: stored as rim_id", [m["rim_size"] for m in c.get("/api/material/106").json()], ["1"])
+check("API: mapping the same rim twice -> 409", c.post("/api/fix/material-rim", json=BODY, headers=H).status_code, 409)
 check("API: mapping an inactive rim -> 409",
-      c.post("/api/fix/material-rim", json={"material_id": 106, "rim_id": rim_id("17")}, headers=H).status_code, 409)
+      c.post("/api/fix/material-rim", json={"material_id": 106, "rim_id": 9, "area_id": 12}, headers=H).status_code, 409)
+check("API: mapping a rim from another area -> 409",
+      c.post("/api/fix/material-rim", json={"material_id": 106, "rim_id": 13, "area_id": 12}, headers=H).status_code, 409)
+check("API: mapping rim None -> 409",
+      c.post("/api/fix/material-rim", json={"material_id": 106, "rim_id": 7, "area_id": 12}, headers=H).status_code, 409)
 
-# -- NG_NO_EQUIPMENT_RUNNING: change over equipment 504 (16) to 19
-r = c.put("/api/fix/running/504", json={"rim_id": rim_id("19")}, headers=H)
-check("API: change over 504 to rim 19 fixes material 104", (r.status_code, status_of(104)), (200, "OK"))
-check("API: material 101 still routable on 15", status_of(101), "OK")
+# -- UniversalRIM / None on equipment
+c.put("/api/fix/running/505", json={"rim_id": 6}, headers=H)
+check("API: 505 on UniversalRIM makes material 104 routable", status_of(104), "OK")
+c.put("/api/fix/running/505", json={"rim_id": 7}, headers=H)
+check("API: 505 on None is not available", status_of(104), "NG_NO_EQUIPMENT_RUNNING")
+run = {e["equipment_id"]: e for e in c.get("/api/running-sizes").json()}
+check("API: running sizes show None as NOT AVAILABLE", run[505]["rim_master_status"], "NOT AVAILABLE")
+
+# -- NG_NO_EQUIPMENT_RUNNING: change over equipment 504 (R195225) to R225245
+r = c.put("/api/fix/running/504", json={"rim_id": 8}, headers=H)
+check("API: change over 504 to R225245 fixes material 104", (r.status_code, status_of(104)), (200, "OK"))
+check("API: material 101 still routable on R20225", status_of(101), "OK")
 
 # -- DBM_NO_RUNNING_SIZE: equipment 506 appears as NOT SET, then gets a rim
-run = {e["equipment_id"]: e for e in c.get("/api/running-sizes").json()}
 check("API: DBM 506 listed as NOT SET", run[506]["rim_master_status"], "NOT SET")
-c.put("/api/fix/running/506", json={"rim_id": rim_id("16")}, headers=H)
+c.put("/api/fix/running/506", json={"rim_id": 2}, headers=H)
 gaps = c.get("/api/gaps").json()
 check("API: DBM_NO_RUNNING_SIZE cleared", any(g["check_code"] == "DBM_NO_RUNNING_SIZE" for g in gaps), False)
 
-# -- NG_NO_ACTIVE_RIM: reactivate rim 17 (508 runs it) fixes material 102
-r = c.post(f"/api/fix/rim/{rim_id('17')}/activate", headers=H)
-check("API: reactivate rim 17 fixes material 102", (r.status_code, status_of(102)), (200, "OK"))
+# -- NG_NO_ACTIVE_RIM: reactivate R24 (508 runs it) fixes material 103
+r = c.post("/api/fix/rim/4/activate", headers=H)
+check("API: reactivate R24 fixes material 103", (r.status_code, status_of(103)), (200, "OK"))
 
 # -- MSL_DUPLICATE_ROW
 dup = next(g for g in c.get("/api/gaps").json() if g["check_code"] == "MSL_DUPLICATE_ROW")
@@ -74,19 +84,22 @@ check("API: dedupe removes 1 row", r.json()["message"], "Removed 1 duplicate row
 
 # -- MSL_NULL_AREA
 null_area = next(g for g in c.get("/api/gaps").json() if g["check_code"] == "MSL_NULL_AREA")
-r = c.patch(f"/api/fix/material-rim/{null_area['fix_ref']['row_id']}", json={"area_id": 1}, headers=H)
+r = c.patch(f"/api/fix/material-rim/{null_area['fix_ref']['row_id']}", json={"area_id": 12}, headers=H)
 check("API: set area clears MSL_NULL_AREA",
       (r.status_code, any(g["check_code"] == "MSL_NULL_AREA" for g in c.get("/api/gaps").json())), (200, False))
 
 # -- remove a mapping
-row = next(m for m in c.get("/api/material/107").json() if m["rim_size"] == "17")
+row = next(m for m in c.get("/api/material/107").json() if m["rim_name"] == "R17520")
 r = c.delete(f"/api/fix/material-rim/{row['id']}", headers=H)
-check("API: remove mapping", (r.status_code, [m["rim_size"] for m in c.get("/api/material/107").json()]), (200, ["15"]))
+check("API: remove mapping", (r.json()["message"], [m["rim_name"] for m in c.get("/api/material/107").json()]),
+      ("Removed rim R17520 from material 107", ["R20225"]))
 
 # -- audit trail
 log = c.get("/api/audit").json()
 check("API: every write audited", [a["action"] for a in reversed(log)],
-      ["map_rim", "set_running_rim", "set_running_rim", "activate_rim", "dedupe", "set_area", "unmap_rim"])
-check("API: audit keeps before/after", (log[-2]["before"]["rim_size"], log[-2]["after"]["rim_size"]), ("16", "19"))
+      ["map_rim", "set_running_rim", "set_running_rim", "set_running_rim", "set_running_rim",
+       "activate_rim", "dedupe", "set_area", "unmap_rim"])
+e504 = next(a for a in log if a["row_ref"] == "equipment_id=504")
+check("API: audit keeps before/after", (e504["before"]["rim_size"], e504["after"]["rim_size"]), ("2", "8"))
 
 sys.exit(1 if failed else 0)

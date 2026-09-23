@@ -1,6 +1,9 @@
 -- Master-data gap report for rim-size routing. One row per finding.
 --   severity: ERROR (tires will fail validation) / WARN (risky data) / INFO
 --   fix_ref:  the keys a fix needs (material_id, row_id, equipment_id, rim_size, ...)
+-- Rims are grouped/compared by rim_master name (rim_key); activity is checked
+-- on the stored rim_id. Equipment running NONE is not available;
+-- UNIVERSALRIM equipment can take any tire.
 -- Production checks (PROD_*, DBM_*) only look at the window [p_from, p_to).
 DROP FUNCTION IF EXISTS master.fn_rim_master_data_gaps(timestamp, timestamp, int);
 
@@ -11,13 +14,17 @@ CREATE FUNCTION master.fn_rim_master_data_gaps(
 RETURNS TABLE(severity text, check_code text, entity text, entity_ref text, detail text, fix_ref jsonb)
 LANGUAGE sql STABLE AS $$
 WITH msl AS (
-    SELECT m.*, master.fn_rim_key(m.rim_size) AS rim_key
+    SELECT m.*, master.fn_rim_name(m.rim_size) AS rim_key
     FROM   master.material_size_lookup m
     WHERE  p_area_id IS NULL OR m.area_id = p_area_id OR m.area_id IS NULL
 ),
 run AS (
-    SELECT r.*, master.fn_rim_key(r.rim_size) AS rim_key
+    SELECT r.*, master.fn_rim_name(r.rim_size) AS rim_key
     FROM   master.runningsize_lookup r
+),
+-- equipment that can actually take tires
+avail AS (
+    SELECT * FROM run WHERE rim_key IS NOT NULL AND rim_key <> 'NONE'
 ),
 prod AS (
     SELECT o.production_id, o.recipe_id, o.material_id, o.equipment_id, o.dtandtime
@@ -63,11 +70,11 @@ findings AS (
            'material_id=' || x.material_id || ' rim ' || x.rim_key || ' is inactive in rim_master'
            || CASE WHEN x.has_active THEN ' (other allowed rims are active)' ELSE ' (no active rim left)' END,
            jsonb_build_object('material_id', x.material_id, 'row_id', x.id, 'rim_size', x.rim_key, 'area_id', x.area_id)
-    FROM  (SELECT m.*, master.fn_rim_status(m.rim_key, m.area_id) AS st,
+    FROM  (SELECT m.*, master.fn_rim_status(m.rim_size) AS st,
                   EXISTS (SELECT 1 FROM msl m2
                           WHERE  m2.material_id = m.material_id AND m2.rim_key IS NOT NULL
                             AND  m2.rim_key <> m.rim_key
-                            AND  master.fn_rim_status(m2.rim_key, m2.area_id) = 'ACTIVE') AS has_active
+                            AND  master.fn_rim_status(m2.rim_size) = 'ACTIVE') AS has_active
            FROM   msl m WHERE m.rim_key IS NOT NULL) x
     WHERE  x.st <> 'ACTIVE'
 
@@ -77,8 +84,16 @@ findings AS (
            jsonb_build_object('rim_size', m.rim_key)
     FROM   msl m
     WHERE  m.rim_key IS NOT NULL
-      AND  NOT EXISTS (SELECT 1 FROM run r WHERE r.rim_key = m.rim_key)
+      AND  m.rim_key NOT IN ('NONE', 'UNIVERSALRIM')
+      AND  NOT EXISTS (SELECT 1 FROM avail r WHERE r.rim_key = m.rim_key)
     GROUP  BY m.rim_key
+
+    UNION ALL
+    SELECT 'WARN', 'MSL_NONE_RIM', 'material_size_lookup', 'id=' || m.id,
+           'material_id=' || m.material_id || ' is mapped to rim None',
+           jsonb_build_object('material_id', m.material_id, 'row_id', m.id)
+    FROM   msl m
+    WHERE  m.rim_key = 'NONE'
 
     UNION ALL
     SELECT 'WARN', 'MSL_MATERIAL_NOT_RUNNABLE', 'material_size_lookup', 'material_id=' || m.material_id,
@@ -87,7 +102,8 @@ findings AS (
     FROM   msl m
     WHERE  m.rim_key IS NOT NULL
     GROUP  BY m.material_id
-    HAVING NOT bool_or(EXISTS (SELECT 1 FROM run r WHERE r.rim_key = m.rim_key))
+    HAVING NOT bool_or(EXISTS (SELECT 1 FROM avail r WHERE r.rim_key = m.rim_key))
+       AND NOT EXISTS (SELECT 1 FROM avail r WHERE r.rim_key = 'UNIVERSALRIM')
 
     -- runningsize_lookup -----------------------------------------------------
     UNION ALL
@@ -100,7 +116,7 @@ findings AS (
     SELECT 'ERROR', 'RUN_RIM_INACTIVE', 'runningsize_lookup', 'equipment_id=' || equipment_id,
            'Running rim ' || rim_key || ' is inactive in rim_master',
            jsonb_build_object('equipment_id', equipment_id, 'rim_size', rim_key)
-    FROM  (SELECT run.*, master.fn_rim_status(rim_key, p_area_id) AS st FROM run WHERE rim_key IS NOT NULL) x
+    FROM  (SELECT run.*, master.fn_rim_status(rim_size) AS st FROM run WHERE rim_key IS NOT NULL) x
     WHERE  st <> 'ACTIVE'
 
     -- rim_master -------------------------------------------------------------
@@ -126,13 +142,12 @@ findings AS (
     WHERE  (p_area_id IS NULL OR local_area_id = p_area_id OR local_area_id IS NULL)
       AND  (master.fn_rim_key(name) IS NULL OR isactive IS NULL OR local_area_id IS NULL)
 
-    -- formatting drift (not an error today, breaks exact-match code) ---------
+    -- stored rim_size with surrounding spaces (breaks exact-match code) ------
     UNION ALL
-    SELECT 'INFO', 'FORMAT_DRIFT', src, ref, 'Value ''' || val || ''' is not trimmed/upper-case', '{}'::jsonb
+    SELECT 'INFO', 'FORMAT_DRIFT', src, ref, 'Value ''' || val || ''' has leading/trailing spaces', '{}'::jsonb
     FROM  (SELECT 'material_size_lookup' src, 'id=' || id ref, rim_size val FROM msl
-           UNION ALL SELECT 'runningsize_lookup', 'equipment_id=' || equipment_id, rim_size FROM run
-           UNION ALL SELECT 'rim_master', 'rim_id=' || rim_id, name FROM master.rim_master) x
-    WHERE  val IS DISTINCT FROM UPPER(BTRIM(val)) AND val IS NOT NULL
+           UNION ALL SELECT 'runningsize_lookup', 'equipment_id=' || equipment_id, rim_size FROM run) x
+    WHERE  val <> BTRIM(val)
 
     -- production (o_production) ---------------------------------------------
     UNION ALL

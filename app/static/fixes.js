@@ -92,12 +92,13 @@ function changeoverImpact(equipmentId, newRimName) {
   const eq = +equipmentId, newKey = rimKey(newRimName);
   const cur = RUNNING.find((e) => e.equipment_id === eq);
   const rows = state.recipes?.rows || [];
-  const lost = rows.filter((r) => (r.eligible_equipment || []).length === 1 && r.eligible_equipment[0] === eq
-    && !(r.running_rim_sizes || []).includes(newKey) && !(r.allowed_rim_sizes || []).includes(newKey));
-  const gained = rows.filter((r) => !(r.eligible_equipment || []).length && (r.allowed_rim_sizes || []).includes(newKey)
-    && !(r.inactive_rim_sizes || []).includes(newKey));
+  const hasActive = (r) => !["NG_NO_MATERIAL_SIZE", "NG_NO_ACTIVE_RIM"].includes(r.status);
+  const fits = (r) => newKey === "UNIVERSALRIM" ? hasActive(r)
+    : newKey !== "NONE" && (r.allowed_rim_sizes || []).includes(newKey) && !(r.inactive_rim_sizes || []).includes(newKey);
+  const lost = rows.filter((r) => (r.eligible_equipment || []).length === 1 && r.eligible_equipment[0] === eq && !fits(r));
+  const gained = rows.filter((r) => !(r.eligible_equipment || []).length && fits(r));
   const n = (list) => list.reduce((s, r) => s + Number(r.wip_tires || 0), 0);
-  const parts = [`Equipment ${eq} is running ${cur?.rim_size ?? "nothing"} now.`];
+  const parts = [`Equipment ${eq} is running ${cur?.rim_name ?? "nothing"} now.`];
   if (gained.length) parts.push(`Unblocks ${n(gained)} WIP tire(s): material ${gained.map((r) => r.material_id).join(", ")}.`);
   parts.push(lost.length ? `Blocks ${n(lost)} WIP tire(s) that can only go to ${eq}: material ${lost.map((r) => r.material_id).join(", ")}.`
                          : "No WIP tire loses its only eligible equipment.");
@@ -126,32 +127,34 @@ function rimOptions(rims, selectedKey) {
     const d = demandOf(r.rim_key);
     const hint = d ? ` · ${d.wip_tires} WIP tires accept${d.blocked_tires ? `, ${d.blocked_tires} blocked` : ""}` : "";
     const area = r.local_area_id != null ? ` · area ${r.local_area_id}` : "";
-    return `<option value="${r.rim_id}"${r.rim_key === selectedKey ? " selected" : ""}>${esc(r.name)}${area}${hint}</option>`;
+    const special = r.rim_key === "NONE" ? " · not available" : r.rim_key === "UNIVERSALRIM" ? " · takes any tire" : "";
+    return `<option value="${r.rim_id}"${r.rim_key === selectedKey ? " selected" : ""}>${esc(r.name)}${area}${special}${hint}</option>`;
   }).join("");
 }
 function equipmentOptions(filter = () => true) {
   return RUNNING.filter(filter).map((e) =>
-    `<option value="${e.equipment_id}">${e.equipment_id} · running ${esc(e.rim_size ?? "not set")}</option>`).join("");
+    `<option value="${e.equipment_id}">${e.equipment_id} · running ${esc(e.rim_name ?? "not set")}</option>`).join("");
 }
 
 // ---- material: mapped rims, add rim, change over equipment --------------------
 function materialDialog(materialId, context = {}) {
   openDialog(`Material ${materialId}${context.recipe_id ? ` · recipe ${context.recipe_id}` : ""}`, async () => {
     const maps = await api(`/api/material/${materialId}`);
-    const mapped = new Set(maps.map((m) => rimKey(m.rim_size)));
-    const addable = activeRims().filter((r) => !mapped.has(r.rim_key));
-    const usable = maps.filter((m) => m.rim_master_status === "ACTIVE").map((m) => rimFor(rimKey(m.rim_size))).filter(Boolean);
+    const mapped = new Set(maps.map((m) => m.rim_name));
+    const addable = activeRims().filter((r) => !mapped.has(r.rim_key) && r.rim_key !== "NONE" && r.rim_key !== "UNIVERSALRIM");
+    const usable = [...new Set(maps.filter((m) => m.rim_master_status === "ACTIVE" && m.rim_name !== "NONE").map((m) => m.rim_name))]
+      .map((k) => rimFor(k)).filter(Boolean);
     const areaDefault = maps.find((m) => m.area_id != null)?.area_id ?? ($("#areaId").value.trim() || addable[0]?.local_area_id || "");
     // status from the latest validation run, so it updates after each fix
     const live = (state.recipes?.rows || []).find((r) => r.material_id === materialId && (!context.recipe_id || r.recipe_id === context.recipe_id));
     const status = live ? live.status : context.status, message = live ? live.message : context.message;
     const rows = maps.map((m) => `
-      <tr><td class="m">${esc(m.rim_size)}</td><td>${esc(m.area_id ?? "—")}</td><td>${pillHtml(m.rim_master_status)}</td>
+      <tr><td class="m">${esc(m.rim_name)} <span class="hint">id ${esc(m.rim_size)}</span></td><td>${esc(m.area_id ?? "—")}</td><td>${pillHtml(m.rim_master_status)}</td>
         <td class="m">${esc(fmt(m.equipment_running) || "—")}</td>
         <td class="actions">
-          ${m.rim_master_status !== "ACTIVE" && m.rim_id != null ? `<button class="sm" data-act="activate" data-rim="${m.rim_id}" data-name="${esc(m.rim_size)}"${dis()}>Reactivate rim</button>` : ""}
+          ${m.rim_master_status !== "ACTIVE" && m.rim_id != null ? `<button class="sm" data-act="activate" data-rim="${m.rim_id}" data-name="${esc(m.rim_name)}"${dis()}>Reactivate rim</button>` : ""}
           ${m.area_id == null ? `<input class="sm num" type="number" id="area-${m.id}" placeholder="area" value="${esc(RIMS.find((r) => r.rim_id === m.rim_id)?.local_area_id ?? areaDefault)}"><button class="sm" data-act="area" data-id="${m.id}"${dis()}>Set area</button>` : ""}
-          <button class="sm danger" data-act="unmap" data-id="${m.id}" data-name="${esc(m.rim_size)}"${dis()}>Remove</button>
+          <button class="sm danger" data-act="unmap" data-id="${m.id}" data-name="${esc(m.rim_name)}"${dis()}>Remove</button>
         </td></tr>`).join("");
     return `
       ${status ? `<p class="dlg-status">${pillHtml(status)} ${esc(message || "")}</p>` : ""}
@@ -166,7 +169,7 @@ function materialDialog(materialId, context = {}) {
       </div>
       <h4>Change over a DBM to one of these rims</h4>
       ${usable.length ? `<div class="form-row">
-        <select id="coEq" aria-label="Equipment">${equipmentOptions((e) => !usable.some((r) => r.rim_key === rimKey(e.rim_size)))}</select>
+        <select id="coEq" aria-label="Equipment">${equipmentOptions((e) => !usable.some((r) => r.rim_key === e.rim_name))}</select>
         <span>→</span>
         <select id="coRim" aria-label="Rim">${rimOptions(usable)}</select>
         <button class="primary" data-act="changeover"${dis()}>Change over</button></div>`
@@ -211,17 +214,17 @@ function equipmentDialog(equipmentId) {
   $("#fixBody").onchange = null;
   openDialog(`Equipment ${equipmentId}`, async () => {
     const e = RUNNING.find((x) => String(x.equipment_id) === String(equipmentId));
-    const cur = rimKey(e?.rim_size);
+    const cur = e?.rim_name ?? null;
     const d = cur && demandOf(cur);
     return `
-      <p class="dlg-status">Running rim <b class="m">${esc(e?.rim_size ?? "not set")}</b> ${pillHtml(e?.rim_master_status || "NOT SET")}
+      <p class="dlg-status">Running rim <b class="m">${esc(e?.rim_name ?? "not set")}</b> ${pillHtml(e?.rim_master_status || "NOT SET")}
         ${d ? ` · ${d.wip_tires} WIP tires accept this rim` : ""}</p>
       <h4>Set running rim</h4>
       <div class="form-row">
         <select id="eqRim" aria-label="Running rim">${rimOptions(activeRims(), cur)}</select>
         <button class="primary" data-act="setrun"${dis()}>Set running rim</button>
       </div>
-      <p class="hint">Only active rims from rim_master can be selected. The hint shows how many WIP tires accept each rim.</p>`;
+      <p class="hint">Only active rims from rim_master can be selected. UniversalRIM takes any tire; None marks the equipment as not available. The hint shows how many WIP tires accept each rim.</p>`;
   });
   $("#fixBody").onclick = (ev) => {
     if (!ev.target.closest("button[data-act=setrun]")) return;
@@ -237,7 +240,7 @@ function rimDialog(key) {
   openDialog(`Rim ${key}`, async () => {
     const rim = rimFor(key), anyRim = rimFor(key, { activeOnly: false });
     const d = demandOf(key);
-    const runningOn = RUNNING.filter((e) => rimKey(e.rim_size) === key);
+    const runningOn = RUNNING.filter((e) => e.rim_name === key);
     const mats = d?.materials || [];
     return `
       <p class="dlg-status">${rim ? pillHtml("ACTIVE") : pillHtml("INACTIVE")}
@@ -249,7 +252,7 @@ function rimDialog(key) {
                          : `<p class="empty">No equipment is running this rim.</p>`}
       ${rim ? `<h4>Change over equipment to rim ${esc(rim.name)}</h4>
       <div class="form-row">
-        <select id="rimEq" aria-label="Equipment">${equipmentOptions((e) => rimKey(e.rim_size) !== key)}</select>
+        <select id="rimEq" aria-label="Equipment">${equipmentOptions((e) => e.rim_name !== key)}</select>
         <button class="primary" data-act="changeover" data-rim="${rim.rim_id}"${dis()}>Change over</button>
       </div>` : ""}`;
   });
@@ -272,7 +275,7 @@ function rimDialog(key) {
 }
 
 // ---- action buttons per table row ---------------------------------------------
-const MATERIAL_CHECKS = ["MSL_MULTI_RIM", "MSL_NULL_AREA", "MSL_RIM_INACTIVE", "MSL_MATERIAL_NOT_RUNNABLE", "MSL_BLANK_RIM", "PROD_MATERIAL_NO_SIZE"];
+const MATERIAL_CHECKS = ["MSL_MULTI_RIM", "MSL_NULL_AREA", "MSL_NONE_RIM", "MSL_RIM_INACTIVE", "MSL_MATERIAL_NOT_RUNNABLE", "MSL_BLANK_RIM", "PROD_MATERIAL_NO_SIZE"];
 const EQUIPMENT_CHECKS = ["RUN_RIM_INACTIVE", "RUN_BLANK_RIM", "DBM_NO_RUNNING_SIZE"];
 
 function fixActions(table, row, i) {

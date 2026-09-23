@@ -1,5 +1,7 @@
 -- Scan-time validation of one tire barcode (= curing.o_production.production_id).
--- The tire may run on any ACTIVE rim size mapped to its material.
+-- The tire may run on any ACTIVE rim mapped to its material (compared by
+-- rim_master name), or on equipment running UNIVERSALRIM. Equipment running
+-- NONE is not available.
 --   p_equipment_id given -> one row: OK / NG_* for that equipment
 --   p_equipment_id NULL  -> one row per eligible equipment (routing candidates)
 CREATE OR REPLACE FUNCTION master.fn_validate_tire_barcode(
@@ -46,7 +48,10 @@ BEGIN
         RETURN;
     END IF;
 
-    SELECT array_agg(DISTINCT master.fn_rim_key(m.rim_size)) INTO v_allowed
+    SELECT array_agg(DISTINCT master.fn_rim_name(m.rim_size)),
+           array_agg(DISTINCT master.fn_rim_name(m.rim_size))
+               FILTER (WHERE master.fn_rim_status(m.rim_size, p_area_id) = 'ACTIVE')
+      INTO v_allowed, v_active
     FROM   master.material_size_lookup m
     WHERE  m.material_id = v_prod.material_id
       AND  master.fn_rim_key(m.rim_size) IS NOT NULL
@@ -58,10 +63,6 @@ BEGIN
         RETURN;
     END IF;
 
-    SELECT array_agg(a ORDER BY a) INTO v_active
-    FROM   unnest(v_allowed) a
-    WHERE  master.fn_rim_status(a, p_area_id) = 'ACTIVE';
-
     IF v_active IS NULL THEN
         RETURN QUERY SELECT 'NG_NO_ACTIVE_RIM',
                             'All allowed rims are inactive in rim_master: ' || array_to_string(v_allowed, ','),
@@ -70,14 +71,17 @@ BEGIN
     END IF;
 
     IF p_equipment_id IS NOT NULL THEN
-        SELECT master.fn_rim_key(r.rim_size) INTO v_run
+        SELECT master.fn_rim_name(r.rim_size) INTO v_run
         FROM   master.runningsize_lookup r
         WHERE  r.equipment_id = p_equipment_id;
 
         IF v_run IS NULL THEN
             RETURN QUERY SELECT 'NG_NO_RUNNING_SIZE', 'Equipment has no running rim size',
                                 v_prod.material_id, v_prod.recipe_id, array_to_string(v_active, ','), p_equipment_id;
-        ELSIF v_run = ANY (v_active) THEN
+        ELSIF v_run = 'NONE' THEN
+            RETURN QUERY SELECT 'NG_EQUIPMENT_NOT_AVAILABLE', 'Equipment is running rim None (not available)',
+                                v_prod.material_id, v_prod.recipe_id, array_to_string(v_active, ','), p_equipment_id;
+        ELSIF v_run = 'UNIVERSALRIM' OR v_run = ANY (v_active) THEN
             RETURN QUERY SELECT 'OK', 'Rim ' || v_run || ' matched',
                                 v_prod.material_id, v_prod.recipe_id, v_run, p_equipment_id;
         ELSIF v_run = ANY (v_allowed) THEN
@@ -93,9 +97,10 @@ BEGIN
 
     RETURN QUERY
         SELECT 'OK', 'Eligible equipment', v_prod.material_id, v_prod.recipe_id,
-               master.fn_rim_key(r.rim_size), r.equipment_id
+               master.fn_rim_name(r.rim_size), r.equipment_id
         FROM   master.runningsize_lookup r
-        WHERE  master.fn_rim_key(r.rim_size) = ANY (v_active)
+        WHERE  master.fn_rim_name(r.rim_size) = ANY (v_active || 'UNIVERSALRIM'::text)
+          AND  master.fn_rim_name(r.rim_size) <> 'NONE'
         ORDER  BY r.equipment_id;
     IF NOT FOUND THEN
         RETURN QUERY SELECT 'NG_NO_EQUIPMENT_RUNNING',

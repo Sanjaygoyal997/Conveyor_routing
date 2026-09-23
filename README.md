@@ -25,7 +25,7 @@ Validation queries run in read-only transactions. Fixes are **off unless you swi
 |---|---|---|
 | `ALLOW_WRITES` | `false` | `true` lets the **Fix…** dialogs change master data (otherwise they are view-only) |
 | `ADMIN_TOKEN` | *(unset)* | If set, every change must send this token (the UI asks for it once per browser session) |
-| `RIM_SIZE_VALUE` | `name` | What is written into `rim_size` columns: `rim_master.name`, or `rim_id` |
+| `RIM_SIZE_VALUE` | `rim_id` | What is written into `rim_size` columns: `rim_master.rim_id`, or `name` |
 
 Every change asks for the operator's name and a confirmation. The confirmation for a changeover lists
 the WIP tires it would unblock or block. Each change runs in one transaction together with a row in
@@ -44,6 +44,7 @@ Only rims that are active in `rim_master` can be picked.
 | `RUN_RIM_INACTIVE`, `RUN_BLANK_RIM`, `DBM_NO_RUNNING_SIZE`, Running sizes tab | Equipment | Set the running rim (`runningsize_lookup` upsert) |
 | `MSL_DUPLICATE_ROW` | Confirm | Keep the oldest row, delete the duplicates |
 | `MSL_NULL_AREA` | Material | Set the area on the mapping |
+| `MSL_NONE_RIM` | Material | Remove the `None` mapping and add a real rim |
 | `PROD_*` (production records), `RIM_*`, `FORMAT_DRIFT` | – | Not editable here: fix these in the source system |
 
 | Tab | What it shows |
@@ -70,7 +71,14 @@ Tire barcode (scanned) = curing.o_production.production_id
          = equipment the tire is routed to (PCI / uniformity / final-finish lane)
 ```
 
-Rim sizes are compared after `UPPER(BTRIM())` (`master.fn_rim_key`), so `"15 "` matches `"15"`.
+### Rim model
+
+- **`rim_size` stores `rim_master.rim_id`.** `rim_master` has one row per rim per area, so rim_id 1
+  (`R20225`, area 12) and rim_id 13 (`R20225`, area 11) are the same rim. Rims are compared by **name**
+  (`master.fn_rim_name`). Active or inactive is checked on the exact `rim_id` (`master.fn_rim_status`).
+- **`UniversalRIM`:** equipment running it can take **any** tire whose material has an active rim.
+- **`None`:** equipment running it is **not available** and takes no tires. This isn't an error.
+  A material mapped to `None` is flagged `MSL_NONE_RIM`, and the UI won't map `None` to a material.
 
 **A material can accept more than one rim size.** Every row in `material_size_lookup` for a
 material/area is an allowed rim. A tire passes when the equipment runs **any** of its allowed
@@ -123,6 +131,8 @@ SELECT * FROM master.fn_validate_tire_barcode('T0001');       -- list eligible e
 | `NG_UNRESOLVED` (rim sizes) | WIP tires with no active rim at all | See the rows above in `fn_wip_rim_readiness` |
 | `INFO_NO_WIP` | Equipment is running a rim that no WIP accepts | Candidate for a changeover |
 | `NG_SIZE_MISMATCH` (barcode) | The target equipment's rim is not one of the tire's allowed rims | Route the tire to another machine |
+| `NG_EQUIPMENT_NOT_AVAILABLE` (barcode) | The target equipment is running `None` | Route the tire to another machine |
+| `INFO_UNIVERSAL` (rim sizes) | Equipment running `UniversalRIM`; the count is the WIP tires it can take | None needed |
 
 Rim sizes are always created in `rim_master` before they can be mapped, so a rim can't be missing from it;
 the only case checked is a rim made **inactive** after it was mapped.

@@ -129,12 +129,15 @@ def get_config():
 def running_sizes(area_id: Optional[int] = None, hours: int = Hours):
     """Equipment in runningsize_lookup, plus DBM equipment seen in the window without a row."""
     return query(
-        """SELECT r.equipment_id, r.rim_size,
-                  master.fn_rim_status(master.fn_rim_key(r.rim_size), %(area_id)s::int) AS rim_master_status,
+        """SELECT r.equipment_id, r.rim_size, master.fn_rim_name(r.rim_size) AS rim_name,
+                  CASE master.fn_rim_name(r.rim_size)
+                       WHEN 'NONE'         THEN 'NOT AVAILABLE'
+                       WHEN 'UNIVERSALRIM' THEN 'UNIVERSAL'
+                       ELSE master.fn_rim_status(r.rim_size, %(area_id)s::int) END AS rim_master_status,
                   r.created_by, r.dtandtime
            FROM   master.runningsize_lookup r
            UNION ALL
-           SELECT DISTINCT d.equipment_id, NULL, 'NOT SET', NULL, NULL::timestamp
+           SELECT DISTINCT d.equipment_id, NULL, NULL, 'NOT SET', NULL, NULL::timestamp
            FROM   dbm.o_production d
            WHERE  d.dtandtime >= (now() - make_interval(hours => %(hours)s))::timestamp
              AND  d.equipment_id IS NOT NULL
@@ -159,15 +162,18 @@ def rims():
 def material_mapping(material_id: int):
     """Rim mappings of one material with rim status and the equipment running each rim."""
     return query(
-        """SELECT m.id, m.material_id, m.rim_size, m.area_id, m.created_by, m.dtandtime,
-                  master.fn_rim_status(master.fn_rim_key(m.rim_size), m.area_id) AS rim_master_status,
+        """SELECT m.id, m.material_id, m.rim_size, master.fn_rim_name(m.rim_size) AS rim_name,
+                  m.area_id, m.created_by, m.dtandtime,
+                  master.fn_rim_status(m.rim_size) AS rim_master_status,
                   (SELECT rm.rim_id FROM master.rim_master rm
-                   WHERE  master.fn_rim_key(rm.name) = master.fn_rim_key(m.rim_size)
-                      OR  rm.rim_id::text = master.fn_rim_key(m.rim_size)
-                   ORDER  BY (rm.local_area_id IS NOT DISTINCT FROM m.area_id) DESC, rm.rim_id LIMIT 1) AS rim_id,
+                   WHERE  rm.rim_id::text = master.fn_rim_key(m.rim_size)
+                      OR  master.fn_rim_key(rm.name) = master.fn_rim_key(m.rim_size)
+                   ORDER  BY (rm.rim_id::text = master.fn_rim_key(m.rim_size)) DESC,
+                             (rm.local_area_id IS NOT DISTINCT FROM m.area_id) DESC, rm.rim_id LIMIT 1) AS rim_id,
                   (SELECT array_agg(r.equipment_id ORDER BY r.equipment_id)
                    FROM   master.runningsize_lookup r
-                   WHERE  master.fn_rim_key(r.rim_size) = master.fn_rim_key(m.rim_size)) AS equipment_running
+                   WHERE  master.fn_rim_name(r.rim_size) = master.fn_rim_name(m.rim_size)
+                     AND  master.fn_rim_name(r.rim_size) <> 'NONE') AS equipment_running
            FROM   master.material_size_lookup m
            WHERE  m.material_id = %(material_id)s
            ORDER  BY m.id""",

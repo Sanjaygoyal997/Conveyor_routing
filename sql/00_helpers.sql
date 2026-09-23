@@ -1,28 +1,47 @@
 -- Helpers shared by all rim-size validation objects.
 --
--- rim_size is free text in material_size_lookup and runningsize_lookup, so
--- every comparison goes through master.fn_rim_key() to ignore case and
--- surrounding spaces ("r15 " = "R15").
+-- material_size_lookup.rim_size and runningsize_lookup.rim_size hold
+-- master.rim_master.rim_id (as text). rim_master has one row per rim per area
+-- (e.g. rim_id 1 = R20225 in area 12, rim_id 13 = R20225 in area 11), so rims
+-- are compared by NAME via master.fn_rim_name(); activity is checked on the
+-- exact rim_master row via master.fn_rim_status().
+--
+-- Special rim names (running on equipment):
+--   UNIVERSALRIM  the equipment can take any tire
+--   NONE          the equipment is not available (no rim / stopped)
 
+-- Normalise free text: trim, upper-case, blank -> NULL.
 CREATE OR REPLACE FUNCTION master.fn_rim_key(p_rim text)
 RETURNS text
 LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
     SELECT NULLIF(UPPER(BTRIM(p_rim)), '')
 $$;
 
--- Status of a rim size in master.rim_master: ACTIVE / INACTIVE.
--- A rim_size is matched against rim_master.name, or against rim_id when the
--- lookup tables store the id as text. Rim sizes are always created in
--- rim_master before they can be mapped, so the only failure case is a rim that
--- was deactivated after mapping (a blank key is also treated as not usable).
-CREATE OR REPLACE FUNCTION master.fn_rim_status(p_rim_key text, p_area_id int DEFAULT NULL)
+-- Canonical rim name for a stored rim_size: the rim_master name of that
+-- rim_id; falls back to the value itself when it is already a name.
+CREATE OR REPLACE FUNCTION master.fn_rim_name(p_rim_size text)
+RETURNS text
+LANGUAGE sql STABLE AS $$
+    SELECT COALESCE(
+        (SELECT master.fn_rim_key(rm.name)
+         FROM   master.rim_master rm
+         WHERE  rm.rim_id::text = master.fn_rim_key(p_rim_size)
+         LIMIT  1),
+        master.fn_rim_key(p_rim_size))
+$$;
+
+-- Status of a stored rim_size in master.rim_master: ACTIVE / INACTIVE.
+-- Matches the exact rim_id, or the name when a name is stored. Rim sizes are
+-- always created in rim_master before they can be mapped, so the only failure
+-- case is a rim made inactive after mapping (a blank value is not usable).
+CREATE OR REPLACE FUNCTION master.fn_rim_status(p_rim_size text, p_area_id int DEFAULT NULL)
 RETURNS text
 LANGUAGE sql STABLE AS $$
     SELECT CASE
-             WHEN p_rim_key IS NOT NULL AND bool_or(rm.isactive) THEN 'ACTIVE'
+             WHEN master.fn_rim_key(p_rim_size) IS NOT NULL AND bool_or(rm.isactive) THEN 'ACTIVE'
              ELSE 'INACTIVE'
            END
     FROM   master.rim_master rm
-    WHERE  (master.fn_rim_key(rm.name) = p_rim_key OR rm.rim_id::text = p_rim_key)
+    WHERE  (rm.rim_id::text = master.fn_rim_key(p_rim_size) OR master.fn_rim_key(rm.name) = master.fn_rim_key(p_rim_size))
       AND  (p_area_id IS NULL OR rm.local_area_id = p_area_id OR rm.local_area_id IS NULL)
 $$;
