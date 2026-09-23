@@ -1,18 +1,23 @@
--- Advance validation of WIP: before tires reach the scanner, check that every
--- recipe/material currently in WIP has a usable rim size and that at least one
--- equipment is running it.
+-- Advance validation of WIP between Curing and DBM: before tires reach DBM,
+-- check that every recipe/material in WIP has a usable rim size and that at
+-- least one equipment is running it.
 --
 -- WIP = latest record per barcode (production_id) in curing.o_production cured
--- in [p_from, p_to), optionally filtered to the given state / quality_status
--- codes (NULL = no filter).
+-- in [p_from, p_to) (default: last 2 days), optionally filtered to the given
+-- state / quality_status codes (NULL = no filter), and - when
+-- p_exclude_at_dbm - whose barcode is not yet in dbm.o_production.
+
+DROP FUNCTION IF EXISTS master.fn_wip_rim_demand(timestamp, timestamp, int[], int[], int);
+DROP FUNCTION IF EXISTS master.fn_wip_rim_readiness(timestamp, timestamp, int[], int[], int);
 
 -- One row per recipe + material in WIP.
 CREATE OR REPLACE FUNCTION master.fn_wip_rim_readiness(
-    p_from         timestamp DEFAULT (now() - interval '24 hours')::timestamp,
-    p_to           timestamp DEFAULT now()::timestamp,
-    p_wip_states   int[]     DEFAULT NULL,
-    p_ok_quality   int[]     DEFAULT NULL,
-    p_area_id      int       DEFAULT NULL)
+    p_from           timestamp DEFAULT (now() - interval '2 days')::timestamp,
+    p_to             timestamp DEFAULT now()::timestamp,
+    p_wip_states     int[]     DEFAULT NULL,
+    p_ok_quality     int[]     DEFAULT NULL,
+    p_area_id        int       DEFAULT NULL,
+    p_exclude_at_dbm boolean   DEFAULT true)
 RETURNS TABLE(
     status             text,
     message            text,
@@ -38,6 +43,8 @@ wip AS (
     SELECT * FROM latest l
     WHERE  (p_wip_states IS NULL OR l.state = ANY (p_wip_states))
       AND  (p_ok_quality IS NULL OR l.quality_status = ANY (p_ok_quality))
+      AND  NOT (p_exclude_at_dbm AND EXISTS (
+                  SELECT 1 FROM dbm.o_production d WHERE d.barcode = l.production_id))
 ),
 grp AS (
     SELECT w.recipe_id, w.material_id,
@@ -113,11 +120,12 @@ $$;
 --   INFO_NO_WIP          equipment runs this rim but nothing in WIP needs it
 --                        (changeover candidate)
 CREATE OR REPLACE FUNCTION master.fn_wip_rim_demand(
-    p_from         timestamp DEFAULT (now() - interval '24 hours')::timestamp,
-    p_to           timestamp DEFAULT now()::timestamp,
-    p_wip_states   int[]     DEFAULT NULL,
-    p_ok_quality   int[]     DEFAULT NULL,
-    p_area_id      int       DEFAULT NULL)
+    p_from           timestamp DEFAULT (now() - interval '2 days')::timestamp,
+    p_to             timestamp DEFAULT now()::timestamp,
+    p_wip_states     int[]     DEFAULT NULL,
+    p_ok_quality     int[]     DEFAULT NULL,
+    p_area_id        int       DEFAULT NULL,
+    p_exclude_at_dbm boolean   DEFAULT true)
 RETURNS TABLE(
     status              text,
     rim_size            text,
@@ -127,7 +135,7 @@ RETURNS TABLE(
     equipment_running   int[])
 LANGUAGE sql STABLE AS $$
 WITH readiness AS (
-    SELECT * FROM master.fn_wip_rim_readiness(p_from, p_to, p_wip_states, p_ok_quality, p_area_id)
+    SELECT * FROM master.fn_wip_rim_readiness(p_from, p_to, p_wip_states, p_ok_quality, p_area_id, p_exclude_at_dbm)
 ),
 demand AS (
     SELECT CASE WHEN r.status IN ('NG_NO_MATERIAL_SIZE', 'NG_AMBIGUOUS_SIZE')

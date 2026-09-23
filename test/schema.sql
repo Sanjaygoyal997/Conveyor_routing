@@ -28,3 +28,11 @@ CREATE TABLE curing.o_production (
     user_id int NOT NULL REFERENCES master.users (id),
     modified_dtandtime timestamp, remark varchar, state int NOT NULL,
     spare1 varchar, spare2 varchar, spare3 int);
+
+-- dbm.o_production: only the columns the validation uses, plus a few results.
+CREATE SCHEMA IF NOT EXISTS dbm;
+CREATE TABLE dbm.o_production (
+    id serial PRIMARY KEY, equipment_id int, dtandtime timestamp,
+    model varchar(150), code varchar(150), barcode varchar(150),
+    total_rank varchar(150), ro_total varchar(150));
+CREATE INDEX idx_dbm_barcode ON dbm.o_production (barcode);

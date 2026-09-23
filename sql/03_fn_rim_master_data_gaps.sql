@@ -2,7 +2,7 @@
 --   severity: ERROR (tires will fail validation) / WARN (risky data) / INFO
 -- Production checks (PROD_*) only look at curing.o_production in [p_from, p_to).
 CREATE OR REPLACE FUNCTION master.fn_rim_master_data_gaps(
-    p_from     timestamp DEFAULT (now() - interval '7 days')::timestamp,
+    p_from     timestamp DEFAULT (now() - interval '2 days')::timestamp,
     p_to       timestamp DEFAULT now()::timestamp,
     p_area_id  int       DEFAULT NULL)
 RETURNS TABLE(severity text, check_code text, entity text, entity_ref text, detail text)
@@ -131,6 +131,16 @@ findings AS (
            count(*) || ' record(s) with NULL recipe_id'
     FROM   prod WHERE recipe_id IS NULL
     GROUP  BY equipment_id
+
+    -- DBM equipment active in the window with no running rim size
+    UNION ALL
+    SELECT 'ERROR', 'DBM_NO_RUNNING_SIZE', 'runningsize_lookup', 'equipment_id=' || d.equipment_id,
+           'DBM equipment balanced ' || count(*) || ' tire(s) in the window but has no running rim size'
+    FROM   dbm.o_production d
+    WHERE  d.dtandtime >= p_from AND d.dtandtime < p_to
+      AND  d.equipment_id IS NOT NULL
+      AND  NOT EXISTS (SELECT 1 FROM run r WHERE r.equipment_id = d.equipment_id AND r.rim_key IS NOT NULL)
+    GROUP  BY d.equipment_id
 )
 SELECT * FROM findings f(severity, check_code, entity, entity_ref, detail)
 ORDER  BY CASE f.severity WHEN 'ERROR' THEN 1 WHEN 'WARN' THEN 2 ELSE 3 END,

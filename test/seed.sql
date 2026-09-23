@@ -37,3 +37,15 @@ INSERT INTO curing.o_production
     (1, 10, 'T0009', 100, 1, 2, 0, 600, now() - interval '1 hour', 1, 9),   -- not WIP (state 9)
     (1, 10, 'T0010', 100, 1, 1, 0, 600, now() - interval '3 hour', 1, 1),
     (2, 11, 'T0010', 101, 1, 1, 0, 600, now() - interval '1 hour', 1, 1);   -- duplicate barcode, other material
+
+-- Outside the default 2-day window: not WIP.
+INSERT INTO curing.o_production
+    (equipment_id, recipe_id, production_id, material_id, quantity, quality_status,
+     reason_id, cycletime, dtandtime, user_id, state) VALUES
+    (7, NULL, 'T0011', 106, 1, 1, 0, 600, now() - interval '3 days', 1, 1);
+
+-- T0002 already balanced at DBM 501 -> no longer WIP.
+-- DBM 506 is balancing tires but has no running rim size.
+INSERT INTO dbm.o_production (equipment_id, dtandtime, barcode, total_rank) VALUES
+    (501, now() - interval '30 minutes', 'T0002', 'A'),
+    (506, now() - interval '20 minutes', 'X9999', 'B');

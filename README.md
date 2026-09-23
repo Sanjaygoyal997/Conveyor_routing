@@ -1,10 +1,36 @@
 # Tire rim-size validation
 
-SQL for checking that every tire can be routed to equipment running the correct rim size.
+SQL and a web UI for checking that every tire can be routed to equipment running the correct rim size.
 It works in two ways:
 
-- **In advance, on WIP:** checks each recipe/material in WIP, and the master data it relies on.
+- **In advance, on WIP between Curing and DBM:** checks each recipe/material in WIP, and the master data it relies on.
 - **At scan time:** checks a single barcode.
+
+**WIP** means tires cured in the last 2 days (`curing.o_production`) whose barcode is not yet in
+`dbm.o_production`. It assumes `dbm.o_production.barcode` equals `curing.o_production.production_id`.
+
+## Web UI
+
+```bash
+pip install -r requirements.txt
+export DATABASE_URL="postgresql://user:password@dbhost:5432/dbname"   # or PGHOST/PGUSER/...
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+# open http://<server>:8000
+```
+
+Load `sql/*.sql` into the database first. The UI only reads data: every query runs in a read-only transaction.
+
+| Tab | What it shows |
+|---|---|
+| **Validate** button + summary | WIP tires, recipe/material groups, groups with issues, blocked tires, rim sizes not running, master-data errors |
+| WIP recipes | `fn_wip_rim_readiness`: one row per recipe + material in WIP |
+| Rim sizes | `fn_wip_rim_demand`: WIP demand per rim size vs equipment running it |
+| Master data gaps | `fn_rim_master_data_gaps`: ERROR / WARN / INFO findings |
+| Barcode check | Scan a barcode, optionally with a target equipment. Shows the result plus its curing and DBM history |
+| Running sizes | `runningsize_lookup`, with each size's status in `rim_master` |
+
+Each table has a text filter, an issues-only toggle, sortable columns and CSV export.
+Options: look-back window, WIP `state` codes, OK `quality_status` codes, area, and whether to include tires already at DBM.
 
 ## Data flow
 
@@ -35,7 +61,7 @@ Load in file order. `01_indexes.sql` uses `CREATE INDEX CONCURRENTLY`, so run it
 ## Usage
 
 ```sql
--- WIP from the last 24 h. Replace {1} with your WIP state codes (NULL = all records).
+-- WIP (last 2 days, not yet at DBM). Replace {1} with your WIP state codes (NULL = all records).
 SELECT * FROM master.fn_wip_rim_readiness(p_wip_states => '{1}');
 SELECT * FROM master.fn_wip_rim_demand(p_wip_states => '{1}');
 
@@ -44,7 +70,7 @@ SELECT * FROM master.fn_wip_rim_readiness(
     p_from => now()::timestamp - interval '8 hours', p_to => now()::timestamp,
     p_wip_states => '{1}', p_ok_quality => '{1}', p_area_id => 1);
 
--- Master-data gaps (production checks use the last 7 days by default)
+-- Master-data gaps (production and DBM checks use the last 2 days by default)
 SELECT * FROM master.fn_rim_master_data_gaps() WHERE severity = 'ERROR';
 
 -- Scan time
@@ -66,7 +92,9 @@ SELECT * FROM master.fn_validate_tire_barcode('T0001');       -- list eligible e
 
 ## Assumptions / open points
 
-- WIP = the latest record per `production_id` in the time window. `state` / `quality_status` are filtered only by the codes you pass in.
+- WIP = the latest record per `production_id` in the time window, excluding barcodes already in
+  `dbm.o_production` (turn this off with `p_exclude_at_dbm => false`). `state` / `quality_status` are filtered only by the codes you pass in.
+- `DBM_NO_RUNNING_SIZE` flags DBM equipment that balanced tires in the window but has no row in `runningsize_lookup`.
 - There is no equipment-to-area table yet, so equipment isn't filtered by area.
 - `runningsize_lookup.spare` is ignored.
 

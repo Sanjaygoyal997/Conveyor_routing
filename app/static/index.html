@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rim Size Validation</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <h1>Rim Size Validation</h1>
+    <p class="sub">WIP between Curing and DBM &middot; recipe &rarr; material &rarr; rim size &rarr; running equipment</p>
+  </div>
+  <div id="dbStatus" class="db-status">Connecting&hellip;</div>
+</header>
+
+<main>
+  <section class="filters" aria-label="Validation options">
+    <label>Look-back
+      <select id="hours">
+        <option value="12">Last 12 hours</option>
+        <option value="24">Last 24 hours</option>
+        <option value="48" selected>Last 2 days</option>
+        <option value="72">Last 3 days</option>
+        <option value="168">Last 7 days</option>
+      </select>
+    </label>
+    <label>WIP state codes
+      <input id="wipStates" placeholder="all" inputmode="numeric" title="Comma-separated curing state codes; blank = all">
+    </label>
+    <label>OK quality codes
+      <input id="okQuality" placeholder="all" inputmode="numeric" title="Comma-separated quality_status codes that may be routed; blank = all">
+    </label>
+    <label>Area ID
+      <input id="areaId" placeholder="all" inputmode="numeric">
+    </label>
+    <label class="check">
+      <input type="checkbox" id="excludeDbm" checked> Exclude tires already at DBM
+    </label>
+    <button id="validateBtn" class="primary">Validate</button>
+  </section>
+
+  <section id="summary" class="tiles" hidden></section>
+  <div id="error" class="error" role="alert" hidden></div>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="recipes" aria-selected="true">WIP recipes</button>
+    <button role="tab" data-tab="rims">Rim sizes</button>
+    <button role="tab" data-tab="gaps">Master data gaps</button>
+    <button role="tab" data-tab="barcode">Barcode check</button>
+    <button role="tab" data-tab="running">Running sizes</button>
+  </nav>
+
+  <section class="panel" data-panel="recipes">
+    <div class="toolbar">
+      <input type="search" class="search" data-for="recipes" placeholder="Filter recipe, material, rim, status&hellip;">
+      <label class="check"><input type="checkbox" class="issuesOnly" data-for="recipes"> Issues only</label>
+      <button class="exportBtn" data-for="recipes">Export CSV</button>
+    </div>
+    <div class="table-wrap" id="table-recipes"><p class="empty">Press <b>Validate</b> to check WIP recipes.</p></div>
+  </section>
+
+  <section class="panel" data-panel="rims" hidden>
+    <div class="toolbar">
+      <input type="search" class="search" data-for="rims" placeholder="Filter rim size, status&hellip;">
+      <label class="check"><input type="checkbox" class="issuesOnly" data-for="rims"> Issues only</label>
+      <button class="exportBtn" data-for="rims">Export CSV</button>
+    </div>
+    <div class="table-wrap" id="table-rims"><p class="empty">Press <b>Validate</b> to compare WIP rim demand with running equipment.</p></div>
+  </section>
+
+  <section class="panel" data-panel="gaps" hidden>
+    <div class="toolbar">
+      <input type="search" class="search" data-for="gaps" placeholder="Filter check, entity, detail&hellip;">
+      <label class="check"><input type="checkbox" class="issuesOnly" data-for="gaps"> Errors only</label>
+      <button class="exportBtn" data-for="gaps">Export CSV</button>
+    </div>
+    <div class="table-wrap" id="table-gaps"><p class="empty">Press <b>Validate</b> to run the master-data gap report.</p></div>
+  </section>
+
+  <section class="panel" data-panel="barcode" hidden>
+    <form id="barcodeForm" class="toolbar">
+      <input id="barcode" placeholder="Scan or type tire barcode" autocomplete="off" required>
+      <input id="equipmentId" placeholder="Target equipment (optional)" inputmode="numeric">
+      <button class="primary" type="submit">Check barcode</button>
+    </form>
+    <div id="barcodeResult"><p class="empty">Checks the barcode against curing, rim master and running sizes, and shows its DBM history.</p></div>
+  </section>
+
+  <section class="panel" data-panel="running" hidden>
+    <div class="toolbar">
+      <input type="search" class="search" data-for="running" placeholder="Filter equipment, rim&hellip;">
+      <button id="loadRunning">Refresh</button>
+      <button class="exportBtn" data-for="running">Export CSV</button>
+    </div>
+    <div class="table-wrap" id="table-running"><p class="empty">Loading&hellip;</p></div>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
