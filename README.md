@@ -7,7 +7,7 @@ It works in two ways:
 - **At scan time:** checks a single barcode.
 
 **WIP** means tires cured in the last 2 days (`curing.o_production`) whose barcode is not yet in
-`dbm.o_production`. It assumes `dbm.o_production.barcode` equals `curing.o_production.production_id`.
+`dbm.o_production`. `dbm.o_production.barcode` equals `curing.o_production.production_id` (confirmed by the plant).
 
 ## Web UI
 
