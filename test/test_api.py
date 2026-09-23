@@ -67,6 +67,12 @@ r = c.put("/api/fix/running/504", json={"rim_id": 8}, headers=H)
 check("API: change over 504 to R225245 fixes material 104", (r.status_code, status_of(104)), (200, "OK"))
 check("API: material 101 still routable on R20225", status_of(101), "OK")
 
+# -- DBM machine list for "pick DBM, then rim": DBM rims + balanced at DBM (incl. no rim / wrong-area rim)
+dbms = {m["equipment_id"]: m["rim_status"] for m in c.get("/api/dbm-machines").json()}
+check("API: DBM list = DBM-rim machines + machines seen at DBM, no TUO machine",
+      sorted(dbms), [501, 502, 503, 504, 505, 506, 508, 509, 510])
+check("API: DBM list statuses", (dbms[506], dbms[509], dbms[510]), ("NOT SET", "NOT AVAILABLE", "WRONG AREA"))
+
 # -- machine check: after 504 went to R225245 nothing is blocked any more -> no suggestions
 machines = {m["equipment_id"]: m for m in c.get("/api/wip/machines", params={"wip_states": "1"}).json()}
 check("API: machine check lists DBM machines only", sorted(machines), [501, 502, 503, 504, 505, 506, 508, 509])

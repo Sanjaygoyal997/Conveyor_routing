@@ -83,8 +83,10 @@ async function write(method, path, body, title, detail) {
     await Promise.all([validate(), loadRunning(), loadLookups()]);
     if (!$("[data-panel=audit]").hidden) loadAudit();
     if (currentDialog) await currentDialog();
+    return true;
   } catch (e) {
     toast(e.message, true);
+    return false;
   }
 }
 

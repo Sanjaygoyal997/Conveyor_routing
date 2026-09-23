@@ -1,10 +1,22 @@
 "use strict";
 // Quick fix tab: two plain forms driven by dropdowns.
 //   Recipe  -> allowed rims   (material_size_lookup, for the selected machine area)
-//   Machine -> running rim    (runningsize_lookup)
+//   DBM     -> running rim    (runningsize_lookup): pick the DBM first, then its rim
 // Uses app.js (state, api, esc, fmt, $) and fixes.js (RIMS, RUNNING, loadLookups, activeRims, write, changeoverImpact, pillHtml).
 
 const qf = { recipe: "", eq: "" };   // current selections survive refreshes
+let QF_DBMS = [];                    // every DBM machine (/api/dbm-machines)
+
+// DBM area selected? Then the machine list is every DBM machine; otherwise the machine-check rows.
+const dbmAreaId = () => [...$("#areaId").options].find((o) => /^DBM\b/i.test(o.textContent))?.value;
+const isDbmArea = () => $("#areaId").value === dbmAreaId();
+function formMachines() {
+  if (isDbmArea()) return QF_DBMS.map((d) => ({ equipment_id: d.equipment_id, running_rim: d.rim_name,
+    rim_status: d.rim_status, last_balanced: d.last_balanced, tires_balanced: d.tires_balanced }));
+  return (state.machines?.rows || []).map((m) => ({ equipment_id: m.equipment_id, running_rim: m.running_rim, rim_status: m.rim_status }));
+}
+const checkRow = (id) => (state.machines?.rows || []).find((m) => String(m.equipment_id) === String(id));
+const currentEq = () => (qf.eq === "__other" ? $("#qfEqOther").value.trim() : qf.eq);
 
 function recipeRows() {
   const rank = (s) => (s.startsWith("NG") ? 0 : s.startsWith("WARN") ? 1 : 2);
@@ -28,13 +40,22 @@ async function renderQuickFix() {
     `Recipe ${esc(r.recipe_id ?? "—")} · material ${r.material_id} · ${r.wip_tires} tire${r.wip_tires == 1 ? "" : "s"} · ${esc(r.status)}</option>`).join("");
   await renderRecipePart();
 
-  // ---- machine form
-  const machines = state.machines?.rows || [];
-  if (!machines.some((m) => String(m.equipment_id) === qf.eq)) qf.eq = String(machines[0]?.equipment_id ?? "");
-  $("#qfEq").innerHTML = machines.map((m) =>
-    `<option value="${m.equipment_id}"${String(m.equipment_id) === qf.eq ? " selected" : ""}>` +
-    `Machine ${m.equipment_id} · ${esc(m.running_rim ?? "no rim")} · ${esc(m.status)}</option>`).join("");
-  const sugg = machines.filter((m) => m.suggested_rim);
+  // ---- DBM form: every DBM machine, even without a rim
+  try { QF_DBMS = isDbmArea() ? await api("/api/dbm-machines") : []; } catch { QF_DBMS = []; }
+  const list = formMachines();
+  const label = isDbmArea() ? "DBM" : "Machine";
+  if (qf.eq !== "__other" && !list.some((m) => String(m.equipment_id) === qf.eq)) {
+    const first = list.find((m) => (checkRow(m.equipment_id)?.status || "").match(/^(NG|WARN)/)) || list[0];
+    qf.eq = String(first?.equipment_id ?? "");
+  }
+  $("#qfEq").innerHTML = list.map((m) => {
+    const chk = checkRow(m.equipment_id);
+    const flag = chk && chk.status !== "OK" ? ` · ${chk.status}` : !["ACTIVE", "UNIVERSAL"].includes(m.rim_status) ? ` · ${m.rim_status}` : "";
+    return `<option value="${m.equipment_id}"${String(m.equipment_id) === qf.eq ? " selected" : ""}>` +
+      `${label} ${m.equipment_id} · ${esc(m.running_rim ?? "no rim set")}${esc(flag)}</option>`;
+  }).join("") + `<option value="__other"${qf.eq === "__other" ? " selected" : ""}>Other ${label} (enter number)…</option>`;
+  $("#qfEqOtherWrap").hidden = qf.eq !== "__other";
+  const sugg = (state.machines?.rows || []).filter((m) => m.suggested_rim);
   $("#qfSuggest").innerHTML = sugg.length
     ? `Suggested: ${sugg.map((m) => `<button class="sm fixbtn" data-qf-eq="${m.equipment_id}" data-qf-rim="${m.suggested_rim_id}">` +
         `${m.equipment_id} → ${esc(m.suggested_rim)} (frees ${m.unblocks_tires})</button>`).join(" ")}`
@@ -65,21 +86,28 @@ async function renderRecipePart() {
 }
 
 function renderMachinePart() {
-  const m = (state.machines?.rows || []).find((x) => String(x.equipment_id) === qf.eq);
-  if (!m) { $("#qfEqInfo").innerHTML = ""; return; }
-  $("#qfEqInfo").innerHTML = `<p>${pillHtml(m.status)} ${esc(m.message)}</p>`;
+  $("#qfEqOtherWrap").hidden = qf.eq !== "__other";
+  const id = currentEq();
+  const m = formMachines().find((x) => String(x.equipment_id) === id);
+  const chk = checkRow(id);
+  $("#qfEqInfo").innerHTML = !id ? `<p class="hint">Enter the DBM number.</p>`
+    : chk ? `<p>${pillHtml(chk.status)} ${esc(chk.message)}</p>`
+    : m ? `<p>${pillHtml(m.rim_status)} Running ${esc(m.running_rim ?? "no rim")}.` +
+          (m.last_balanced ? ` Last balanced ${esc(fmt(m.last_balanced))} (${m.tires_balanced} tires in 30 days).` : "") + `</p>`
+    : `<p class="hint">New DBM ${esc(id)}: no rim set yet.</p>`;
   const keep = $("#qfEqRim").dataset.want || "";
-  $("#qfEqRim").innerHTML = rimOptions(activeRims(), m.running_rim);
+  $("#qfEqRim").innerHTML = rimOptions(activeRims(), m?.running_rim ?? null);
   if (keep) { $("#qfEqRim").value = keep; $("#qfEqRim").dataset.want = ""; }
   renderImpact();
-  $("#qfSetRim").disabled = !CONFIG.writes_enabled;
+  $("#qfSetRim").disabled = !CONFIG.writes_enabled || !/^\d+$/.test(id);
 }
 
 function renderImpact() {
   const rim = RIMS.find((r) => String(r.rim_id) === $("#qfEqRim").value);
-  const m = (state.machines?.rows || []).find((x) => String(x.equipment_id) === qf.eq);
-  $("#qfImpact").textContent = rim && m
-    ? (rim.rim_key === m.running_rim ? "This is the rim it is running now." : changeoverImpact(m.equipment_id, rim.name))
+  const id = currentEq();
+  const m = formMachines().find((x) => String(x.equipment_id) === id);
+  $("#qfImpact").textContent = rim && /^\d+$/.test(id)
+    ? (m && rim.rim_key === m.running_rim ? "This is the rim it is running now." : changeoverImpact(id, rim.name))
     : "";
 }
 
@@ -94,6 +122,7 @@ function openQuickFix({ recipe, eq } = {}) {
 // ---- events
 $("#qfRecipe").addEventListener("change", (e) => { qf.recipe = e.target.value; renderRecipePart(); });
 $("#qfEq").addEventListener("change", (e) => { qf.eq = e.target.value; renderMachinePart(); });
+$("#qfEqOther").addEventListener("input", renderMachinePart);
 $("#qfEqRim").addEventListener("change", renderImpact);
 
 $("#qfAddRim").addEventListener("click", () => {
@@ -121,9 +150,12 @@ $("#qfRecipeInfo").addEventListener("click", (ev) => {
 
 $("#qfSetRim").addEventListener("click", () => {
   const rim = RIMS.find((x) => String(x.rim_id) === $("#qfEqRim").value);
-  if (!qf.eq || !rim) return;
-  write("PUT", `/api/fix/running/${qf.eq}`, { rim_id: rim.rim_id },
-    `Set machine ${qf.eq} to rim ${rim.name}?`, changeoverImpact(qf.eq, rim.name));
+  const id = currentEq();
+  if (!/^\d+$/.test(id) || !rim) return;
+  const label = isDbmArea() ? "DBM" : "machine";
+  write("PUT", `/api/fix/running/${id}`, { rim_id: rim.rim_id },
+    `Map rim ${rim.name} to ${label} ${id}?`, changeoverImpact(id, rim.name))
+    .then((ok) => { if (ok && qf.eq === "__other") { qf.eq = id; $("#qfEqOther").value = ""; renderQuickFix(); } });
 });
 
 $("#qfSuggest").addEventListener("click", (ev) => {

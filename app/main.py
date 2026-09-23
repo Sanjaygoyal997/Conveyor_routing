@@ -177,6 +177,40 @@ def running_sizes(area_id: Optional[int] = None, hours: int = Hours):
     )
 
 
+@app.get("/api/dbm-machines")
+def dbm_machines(days: int = Query(30, ge=1, le=366)):
+    """Every DBM machine: those in runningsize_lookup with a DBM rim (or no rim), plus every
+    equipment that balanced tires in dbm.o_production in the last `days` days - with or without a rim."""
+    return query(
+        """WITH seen AS (
+               SELECT d.equipment_id, max(d.dtandtime) AS last_balanced, count(*) AS tires_balanced
+               FROM   dbm.o_production d
+               WHERE  d.dtandtime >= (now() - make_interval(days => %(days)s))::timestamp
+                 AND  d.equipment_id IS NOT NULL
+               GROUP  BY d.equipment_id),
+           run AS (
+               SELECT r.equipment_id, r.rim_size, master.fn_rim_name(r.rim_size) AS rim_name,
+                      master.fn_rim_area(r.rim_size) AS rim_area
+               FROM   master.runningsize_lookup r)
+           SELECT COALESCE(r.equipment_id, s.equipment_id) AS equipment_id,
+                  r.rim_size, r.rim_name,
+                  CASE WHEN r.rim_name IS NULL                 THEN 'NOT SET'
+                       WHEN r.rim_name = 'NONE'                THEN 'NOT AVAILABLE'
+                       WHEN r.rim_name = 'UNIVERSALRIM'        THEN 'UNIVERSAL'
+                       WHEN r.rim_area IS DISTINCT FROM master.fn_area_id('DBM') AND r.rim_area IS NOT NULL
+                                                              THEN 'WRONG AREA'
+                       ELSE master.fn_rim_status(r.rim_size) END AS rim_status,
+                  s.last_balanced, COALESCE(s.tires_balanced, 0) AS tires_balanced
+           FROM   run r
+           FULL   JOIN seen s ON s.equipment_id = r.equipment_id
+           WHERE  s.equipment_id IS NOT NULL                                   -- balanced at DBM
+              OR  r.rim_area IS NULL                                           -- no rim / name value
+              OR  r.rim_area = master.fn_area_id('DBM')                         -- runs a DBM rim
+           ORDER  BY 1""",
+        {"days": days},
+    )
+
+
 @app.get("/api/rims")
 def rims():
     """rim_master, for picking a rim in the fix dialogs."""
