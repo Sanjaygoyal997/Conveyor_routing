@@ -57,7 +57,7 @@ check "WIP rim demand vs running equipment (None left out)" \
 
 check "Master data gap codes" \
   "SELECT string_agg(DISTINCT check_code, ' ') FROM master.fn_rim_master_data_gaps()" \
-  "DBM_NO_RUNNING_SIZE FORMAT_DRIFT MSL_DUPLICATE_ROW MSL_MATERIAL_NOT_RUNNABLE MSL_MULTI_RIM MSL_NONE_RIM MSL_NULL_AREA MSL_RIM_INACTIVE MSL_RIM_WRONG_AREA MSL_SIZE_NOT_RUNNING PROD_DUPLICATE_BARCODE PROD_MATERIAL_NO_SIZE PROD_NO_RECIPE RUN_RIM_INACTIVE RUN_RIM_WRONG_AREA"
+  "DBM_NO_RUNNING_SIZE FORMAT_DRIFT MSL_DUPLICATE_ROW MSL_MATERIAL_NOT_RUNNABLE MSL_MULTI_RIM MSL_NONE_RIM MSL_NULL_AREA MSL_RIM_INACTIVE MSL_RIM_INVALID MSL_RIM_WRONG_AREA MSL_SIZE_NOT_RUNNING PROD_DUPLICATE_BARCODE PROD_MATERIAL_NO_SIZE PROD_NO_RECIPE RUN_RIM_INACTIVE RUN_RIM_WRONG_AREA"
 
 check "Wrong-area findings" \
   "SELECT string_agg(check_code || ':' || entity_ref, ' ' ORDER BY check_code) FROM master.fn_rim_master_data_gaps() WHERE check_code LIKE '%WRONG_AREA'" \
@@ -66,6 +66,10 @@ check "Wrong-area findings" \
 check "Inactive rim is ERROR only when no other active rim" \
   "SELECT string_agg(severity || ':' || split_part(detail, ' ', 1), ' ' ORDER BY severity, detail) FROM master.fn_rim_master_data_gaps() WHERE check_code = 'MSL_RIM_INACTIVE'" \
   "ERROR:material_id=102 ERROR:material_id=103 WARN:material_id=107"
+
+check "Placeholder rim '-' is reported as invalid, not inactive" \
+  "SELECT severity || ' ' || detail FROM master.fn_rim_master_data_gaps() WHERE check_code = 'MSL_RIM_INVALID'" \
+  "ERROR material_id=112 rim - is not a rim_id in rim_master (no active rim left)"
 
 check "Same rim name in areas 11 and 12 is not a duplicate" \
   "SELECT count(*) FROM master.fn_rim_master_data_gaps() WHERE check_code = 'RIM_DUPLICATE_NAME'" "0"

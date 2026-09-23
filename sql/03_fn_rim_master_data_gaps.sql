@@ -76,16 +76,22 @@ findings AS (
     FROM   msl WHERE area_id IS NULL
 
     UNION ALL
-    -- Rim deactivated after mapping: ERROR when the material has no other
-    -- active rim, WARN when it still has one
+    -- Rim deactivated after mapping (or a value that is no rim at all, e.g. '-'):
+    -- ERROR when the material has no other active rim, WARN when it still has one
     SELECT CASE WHEN x.has_active THEN 'WARN' ELSE 'ERROR' END,
-           'MSL_RIM_INACTIVE', 'material_size_lookup', 'id=' || x.id,
-           'material_id=' || x.material_id || ' rim ' || x.rim_key || ' is inactive in rim_master'
+           CASE WHEN x.known THEN 'MSL_RIM_INACTIVE' ELSE 'MSL_RIM_INVALID' END,
+           'material_size_lookup', 'id=' || x.id,
+           'material_id=' || x.material_id || ' rim ' || x.rim_key
+           || CASE WHEN x.known THEN ' is inactive in rim_master' ELSE ' is not a rim_id in rim_master' END
            || CASE WHEN x.has_active THEN ' (other allowed rims are active)' ELSE ' (no active rim left)' END,
            jsonb_build_object('material_id', x.material_id, 'row_id', x.id, 'rim_size', x.rim_key, 'area_id', x.area_id)
     FROM  (SELECT m.*, master.fn_rim_status(m.rim_size) AS st,
+                  EXISTS (SELECT 1 FROM master.rim_master rm
+                          WHERE rm.rim_id::text = master.fn_rim_key(m.rim_size)
+                             OR master.fn_rim_key(rm.name) = master.fn_rim_key(m.rim_size)) AS known,
                   EXISTS (SELECT 1 FROM msl m2
                           WHERE  m2.material_id = m.material_id AND m2.rim_key IS NOT NULL
+                            AND  m2.area_id IS NOT DISTINCT FROM m.area_id      -- same machine area
                             AND  m2.rim_key <> m.rim_key
                             AND  master.fn_rim_status(m2.rim_size) = 'ACTIVE') AS has_active
            FROM   msl m WHERE m.rim_key IS NOT NULL) x

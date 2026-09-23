@@ -40,7 +40,8 @@ INSERT INTO master.material_size_lookup (material_id, rim_size, area_id) VALUES
     (108, '8', 12), (108, '2', 12), -- R225245 not running, R195225 running -> OK
     (109, '13', 11),                -- TUO-only mapping (R20225 area 11): not valid for DBM
     (111, '13', 12),                -- DBM mapping that uses a TUO rim -> wrong area
-    (110, '7', 12);                 -- mapped to None
+    (110, '7', 12),                 -- mapped to None
+    (112, '-', 11);                 -- placeholder, not a rim_id (seen in plant data)
 -- material 106: no mapping at all
 
 INSERT INTO master.runningsize_lookup (equipment_id, rim_size) VALUES
