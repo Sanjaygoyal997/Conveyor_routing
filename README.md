@@ -62,6 +62,12 @@ cd ../backend/ConveyorRouting.Api && dotnet publish -c Release -o ../../publish
 
 Use the same scheme for both. A UI on `https` can't call an API on `http`, because the browser blocks it.
 
+`Cors:Origins` is the UI's address exactly as the browser's address bar shows it: `http://host:port`, with no path.
+It can be a list or one string (`"http://10.200.233.11:8083, http://mes-server:8083"`), and `"*"` allows any
+address. The API writes the origins it accepts to its log at startup. When an origin is missing, the API still
+answers with 200 but without an `Access-Control-Allow-Origin` header. The browser then blocks the response, and
+the UI shows "Cannot reach the API …" with the address to add.
+
 **Option B: one IIS site for API and UI.** Run `npm run build`, then `dotnet publish`. The API serves the UI from `wwwroot`, and `config.js` keeps `apiBase: ""`. Nothing to set for CORS.
 
 **API on IIS (both options):** host it like SmartMES_ReportAPI: install the ASP.NET Core Hosting Bundle (5.0, or 8.0 if published with `-p:Tfm=net8.0`) and use an app pool with *No Managed Code*. The API's `web.config` turns WebDAV off for this site, because IIS WebDAV answers PUT / PATCH / DELETE with *405 Method Not Allowed* and the fix buttons use them. If you see 405 on a fix, check that this `web.config` was deployed.

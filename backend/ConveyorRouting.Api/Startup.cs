@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Newtonsoft.Json;
@@ -84,9 +85,13 @@ namespace ConveyorRouting.Api
                     return new ObjectResult(OEMResponse.Fail(422, msg)) { StatusCode = 422 };
                 });
 
-            var origins = Configuration.GetSection("Cors:Origins").Get<string[]>() ?? new[] { "http://localhost:3000" };
+            AllowedOrigins = CorsOrigins(Configuration);
             services.AddCors(options => options.AddPolicy("AllowOrigin", builder =>
-                builder.WithOrigins(origins).AllowAnyMethod().AllowAnyHeader()));
+            {
+                if (AllowedOrigins.Contains("*")) builder.AllowAnyOrigin();
+                else builder.WithOrigins(AllowedOrigins);
+                builder.AllowAnyMethod().AllowAnyHeader();
+            }));
 
             services.AddSwaggerGen(c =>
             {
@@ -111,8 +116,24 @@ namespace ConveyorRouting.Api
             });
         }
 
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+        private string[] AllowedOrigins = Array.Empty<string>();
+
+        /// <summary>
+        /// Cors:Origins as a JSON array or one string ("a, b; c"). Entries are the UI's address as shown in the
+        /// browser: scheme://host:port, no path; a trailing "/" is ignored. "*" allows any origin.
+        /// </summary>
+        private static string[] CorsOrigins(IConfiguration config)
         {
+            var section = config.GetSection("Cors:Origins");
+            var raw = section.Get<string[]>() ?? (section.Value ?? "").Split(',', ';');
+            var list = raw.Select(o => (o ?? "").Trim().TrimEnd('/')).Where(o => o.Length > 0).Distinct().ToArray();
+            return list.Length > 0 ? list : new[] { "http://localhost:3000" };
+        }
+
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, ILogger<Startup> log)
+        {
+            log.LogInformation("CORS allowed origins (Cors:Origins): {Origins}", string.Join(", ", AllowedOrigins));
+
             if (env.IsDevelopment())
                 app.UseDeveloperExceptionPage();
 

@@ -3,11 +3,29 @@
 // API address: config.js (window.APP_CONFIG.apiBase, editable on the server), else VITE_API_BASE, else same site.
 const BASE = (window.APP_CONFIG?.apiBase || import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 let token = null;
+let tokenRequest = null;   // one shared getToken call, however many requests start at once
 
-async function fetchToken() {
-  const res = await fetch(`${BASE}/api/Auth/getToken`);
-  if (!res.ok) throw new Error(`Could not get an API token (HTTP ${res.status})`);
-  token = (await res.json()).token;
+// fetch() only says "Failed to fetch" when the API can't be reached or the browser blocks the answer (CORS)
+async function send(url, init) {
+  try {
+    return await fetch(url, init);
+  } catch {
+    const api = BASE || window.location.origin;
+    throw new Error(`Cannot reach the API at ${api}. Check apiBase in config.js, and that "${window.location.origin}" `
+      + `is listed in Cors:Origins in the API's appsettings.json (then recycle the API app pool). `
+      + `Press F12 > Console for the browser's exact reason.`);
+  }
+}
+
+function fetchToken() {
+  if (!tokenRequest) {
+    tokenRequest = (async () => {
+      const res = await send(`${BASE}/api/Auth/getToken`);
+      if (!res.ok) throw new Error(`Could not get an API token (HTTP ${res.status})`);
+      token = (await res.json()).token;
+    })().finally(() => { tokenRequest = null; });
+  }
+  return tokenRequest;
 }
 
 export async function request(method, path, { params, body, headers } = {}) {
@@ -17,7 +35,7 @@ export async function request(method, path, { params, body, headers } = {}) {
     if (!token) await fetchToken();
     const h = { ...headers, Authorization: `Bearer ${token}` };
     if (body !== undefined) h["Content-Type"] = "application/json";
-    const res = await fetch(url, { method, headers: h, body: body !== undefined ? JSON.stringify(body) : undefined });
+    const res = await send(url, { method, headers: h, body: body !== undefined ? JSON.stringify(body) : undefined });
     const text = await res.text();
     let out = null;
     try { out = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
