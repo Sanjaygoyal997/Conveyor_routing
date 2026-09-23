@@ -18,7 +18,33 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 # open http://<server>:8000
 ```
 
-Load `sql/*.sql` into the database first. The UI only reads data: every query runs in a read-only transaction.
+Load `sql/*.sql` into the database first (`05_audit.sql` creates `master.rim_validation_audit`).
+Validation queries run in read-only transactions. Fixes are **off unless you switch them on**:
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `ALLOW_WRITES` | `false` | `true` lets the **Fix…** dialogs change master data (otherwise they are view-only) |
+| `ADMIN_TOKEN` | *(unset)* | If set, every change must send this token (the UI asks for it once per browser session) |
+| `RIM_SIZE_VALUE` | `name` | What is written into `rim_size` columns: `rim_master.name`, or `rim_id` |
+
+Every change asks for the operator's name and a confirmation. The confirmation for a changeover lists
+the WIP tires it would unblock or block. Each change runs in one transaction together with a row in
+`master.rim_validation_audit` (who, when, before/after), shown in the **Change log** tab.
+Only rims that are active in `rim_master` can be picked.
+
+### Fix actions per case
+
+| Case | Fix… opens | Changes available |
+|---|---|---|
+| `NG_NO_MATERIAL_SIZE`, `PROD_MATERIAL_NO_SIZE` | Material | Add an allowed rim (`material_size_lookup` insert) |
+| `NG_NO_ACTIVE_RIM`, `WARN_SOME_RIMS_INACTIVE`, `MSL_RIM_INACTIVE` | Material | Reactivate the rim (`rim_master.isactive`), remove the mapping, or add another rim |
+| `NG_NO_EQUIPMENT_RUNNING`, `MSL_MATERIAL_NOT_RUNNABLE` | Material | Change over a DBM to one of the material's rims, or add a rim that is running |
+| `NG_NOT_RUNNING`, `INFO_NOT_RUNNING`, `INFO_NO_WIP`, `MSL_SIZE_NOT_RUNNING` | Rim | Change over equipment to this rim; open the affected materials or equipment |
+| `NG_UNRESOLVED` | Material (one button per material) | As above |
+| `RUN_RIM_INACTIVE`, `RUN_BLANK_RIM`, `DBM_NO_RUNNING_SIZE`, Running sizes tab | Equipment | Set the running rim (`runningsize_lookup` upsert) |
+| `MSL_DUPLICATE_ROW` | Confirm | Keep the oldest row, delete the duplicates |
+| `MSL_NULL_AREA` | Material | Set the area on the mapping |
+| `PROD_*` (production records), `RIM_*`, `FORMAT_DRIFT` | – | Not editable here: fix these in the source system |
 
 | Tab | What it shows |
 |---|---|
@@ -28,6 +54,7 @@ Load `sql/*.sql` into the database first. The UI only reads data: every query ru
 | Master data gaps | `fn_rim_master_data_gaps`: ERROR / WARN / INFO findings |
 | Barcode check | Scan a barcode, optionally with a target equipment. Shows the result plus its curing and DBM history |
 | Running sizes | `runningsize_lookup`, with each size's status in `rim_master` |
+| Change log | Every fix made from the UI: who, when, what changed |
 
 Each table has a text filter, an issues-only toggle, sortable columns and CSV export.
 Options: look-back window, WIP `state` codes, OK `quality_status` codes, area, and whether to include tires already at DBM.
@@ -59,6 +86,7 @@ rims that is active in `rim_master`.
 | | `fn_wip_rim_demand(...)` | **WIP check per rim size**: tires needing each rim vs the equipment running it |
 | `sql/03_fn_rim_master_data_gaps.sql` | `fn_rim_master_data_gaps(...)` | Full master-data gap report (ERROR / WARN / INFO) |
 | `sql/04_fn_validate_tire_barcode.sql` | `fn_validate_tire_barcode(...)` | Scan-time check of one barcode |
+| `sql/05_audit.sql` | `master.rim_validation_audit` | Log of every fix made from the UI |
 
 Load in file order. `01_indexes.sql` uses `CREATE INDEX CONCURRENTLY`, so run it outside a transaction.
 
@@ -114,4 +142,5 @@ active rim; otherwise it is a **WARN**. `MSL_MULTI_RIM` (INFO) lists materials t
 
 ```bash
 test/run_tests.sh   # needs a local PostgreSQL; creates and drops a throwaway DB
+                    # also runs test/test_api.py (fix endpoints) when fastapi, psycopg and httpx are installed
 ```

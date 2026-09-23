@@ -13,7 +13,10 @@
     <h1>Rim Size Validation</h1>
     <p class="sub">WIP between Curing and DBM &middot; recipe &rarr; material &rarr; rim size &rarr; running equipment</p>
   </div>
-  <div id="dbStatus" class="db-status">Connecting&hellip;</div>
+  <div class="top-right">
+    <div id="editBar" class="edit-bar"></div>
+    <div id="dbStatus" class="db-status">Connecting&hellip;</div>
+  </div>
 </header>
 
 <main>
@@ -51,6 +54,7 @@
     <button role="tab" data-tab="gaps">Master data gaps</button>
     <button role="tab" data-tab="barcode">Barcode check</button>
     <button role="tab" data-tab="running">Running sizes</button>
+    <button role="tab" data-tab="audit">Change log</button>
   </nav>
 
   <section class="panel" data-panel="recipes">
@@ -97,8 +101,33 @@
     </div>
     <div class="table-wrap" id="table-running"><p class="empty">Loading&hellip;</p></div>
   </section>
+
+  <section class="panel" data-panel="audit" hidden>
+    <div class="toolbar"><button id="loadAudit">Refresh</button></div>
+    <div class="table-wrap" id="table-audit"><p class="empty">Loading&hellip;</p></div>
+  </section>
 </main>
 
+<dialog id="fixDialog" class="fix-dialog" aria-labelledby="fixTitle">
+  <div class="dlg-head">
+    <h2 id="fixTitle">Fix</h2>
+    <button id="fixClose" aria-label="Close">&times;</button>
+  </div>
+  <div id="fixBody" class="dlg-body"></div>
+</dialog>
+
+<dialog id="confirmDialog" class="confirm-dialog" aria-labelledby="confirmTitle">
+  <h2 id="confirmTitle">Confirm</h2>
+  <p id="confirmDetail"></p>
+  <div class="dlg-actions">
+    <button id="confirmCancel">Cancel</button>
+    <button id="confirmOk" class="primary">Confirm</button>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
 <script src="/static/app.js"></script>
+<script src="/static/fixes.js"></script>
 </body>
 </html>

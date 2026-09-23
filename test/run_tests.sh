@@ -67,5 +67,11 @@ check "Unknown barcode" \
 check "Quality hold" \
   "SELECT status FROM master.fn_validate_tire_barcode('T0009', 501, NULL, '{1}')" "NG_QUALITY_HOLD"
 
+if python3 -c "import fastapi, psycopg, httpx" 2>/dev/null; then
+    DATABASE_URL="dbname=$DB" python3 test/test_api.py || fail=1
+else
+    echo "SKIP  API tests (pip install -r requirements.txt httpx)"
+fi
+
 dropdb "$DB"
 exit $fail

@@ -39,6 +39,7 @@ const TABLES = {
       { key: "first_cured", label: "First cured" },
       { key: "last_cured", label: "Last cured" },
       { key: "message", label: "Message" },
+      { key: "_fix", label: "", actions: true },
     ],
   },
   rims: {
@@ -51,6 +52,7 @@ const TABLES = {
       { key: "recipes", label: "Recipes" },
       { key: "materials", label: "Materials" },
       { key: "equipment_running", label: "Equipment running" },
+      { key: "_fix", label: "", actions: true },
     ],
   },
   gaps: {
@@ -62,6 +64,7 @@ const TABLES = {
       { key: "entity", label: "Table" },
       { key: "entity_ref", label: "Reference" },
       { key: "detail", label: "Detail" },
+      { key: "_fix", label: "", actions: true },
     ],
   },
   running: {
@@ -69,16 +72,18 @@ const TABLES = {
     columns: [
       { key: "equipment_id", label: "Equipment", num: true },
       { key: "rim_size", label: "Running rim size" },
-      { key: "rim_master_status", label: "Rim master", pill: true, pillMap: { ACTIVE: "ok", INACTIVE: "ng" } },
+      { key: "rim_master_status", label: "Rim master", pill: true, pillMap: { ACTIVE: "ok", INACTIVE: "ng", "NOT SET": "ng" } },
       { key: "created_by", label: "Set by" },
       { key: "dtandtime", label: "Set at" },
+      { key: "_fix", label: "", actions: true },
     ],
   },
 };
 
 const state = {}; // name -> { rows, sortKey, sortDir }
 
-function cell(col, row) {
+function cell(col, row, name, i) {
+  if (col.actions) return `<td class="actions">${typeof fixActions === "function" ? fixActions(name, row, i) : ""}</td>`;
   const v = row[col.key];
   if (col.pill && v != null) {
     const cls = col.pillMap ? col.pillMap[v] || "info" : pillClass(v);
@@ -96,7 +101,7 @@ function visibleRows(name) {
   let rows = st.rows.filter((r) => {
     if (issuesOnly && !(def.issueFilter ? def.issueFilter(r) : isIssue(r[def.statusKey]))) return false;
     if (!q) return true;
-    return def.columns.some((c) => fmt(r[c.key]).toLowerCase().includes(q));
+    return def.columns.some((c) => !c.actions && fmt(r[c.key]).toLowerCase().includes(q));
   });
   if (st.sortKey) {
     const k = st.sortKey, d = st.sortDir === "desc" ? -1 : 1;
@@ -117,11 +122,16 @@ function renderTable(name) {
   const rows = visibleRows(name);
   if (!st.rows.length) { wrap.innerHTML = `<p class="empty">No rows.</p>`; return; }
   if (!rows.length) { wrap.innerHTML = `<p class="empty">No rows match the filter.</p>`; return; }
-  const head = def.columns.map((c) =>
+  st.visible = rows;
+  const head = def.columns.map((c) => c.actions ? "<th></th>" :
     `<th data-key="${c.key}"${st.sortKey === c.key ? ` data-dir="${st.sortDir}"` : ""}>${esc(c.label)}</th>`).join("");
-  const body = rows.map((r) => `<tr>${def.columns.map((c) => cell(c, r)).join("")}</tr>`).join("");
+  const body = rows.map((r, i) => `<tr>${def.columns.map((c) => cell(c, r, name, i)).join("")}</tr>`).join("");
   wrap.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
-  $$("th", wrap).forEach((th) => th.addEventListener("click", () => {
+  wrap.onclick = (ev) => {
+    const b = ev.target.closest("button[data-fix]");
+    if (b && typeof onFix === "function") onFix(name, st.visible[+b.dataset.fix], b);
+  };
+  $$("th[data-key]", wrap).forEach((th) => th.addEventListener("click", () => {
     const k = th.dataset.key;
     st.sortDir = st.sortKey === k && st.sortDir === "asc" ? "desc" : "asc";
     st.sortKey = k;
@@ -140,9 +150,10 @@ function setRows(name, rows) {
 
 function exportCsv(name) {
   const def = TABLES[name];
+  const cols = def.columns.filter((c) => !c.actions);
   const rows = visibleRows(name);
   const q = (v) => `"${fmt(v).replace(/"/g, '""')}"`;
-  const csv = [def.columns.map((c) => q(c.label)).join(","), ...rows.map((r) => def.columns.map((c) => q(r[c.key])).join(","))].join("\r\n");
+  const csv = [cols.map((c) => q(c.label)).join(","), ...rows.map((r) => cols.map((c) => q(r[c.key])).join(","))].join("\r\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
   a.download = `rim-validation-${name}-${new Date().toISOString().slice(0, 16).replace(":", "")}.csv`;
@@ -220,7 +231,7 @@ async function validate() {
 
 async function loadRunning() {
   try {
-    setRows("running", await api("/api/running-sizes", { area_id: $("#areaId").value.trim() }));
+    setRows("running", await api("/api/running-sizes", { area_id: $("#areaId").value.trim(), hours: $("#hours").value }));
   } catch (e) {
     $("#table-running").innerHTML = `<p class="empty">${esc(e.message)}</p>`;
   }

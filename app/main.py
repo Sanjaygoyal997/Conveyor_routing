@@ -1,4 +1,5 @@
-"""Rim-size validation UI: WIP between Curing and DBM, master-data gaps, barcode check.
+"""Rim-size validation UI: WIP between Curing and DBM, master-data gaps, barcode check,
+and (when ALLOW_WRITES=true) fixes to the master data - see app/fixes.py.
 
 Run:  uvicorn app.main:app --host 0.0.0.0 --port 8000
 DB:   DATABASE_URL (libpq conninfo/URL) or the standard PG* environment variables.
@@ -13,12 +14,15 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
 
+from app import fixes
+
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 STATEMENT_TIMEOUT_MS = int(os.environ.get("STATEMENT_TIMEOUT_MS", "60000"))
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="Rim Size Validation")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.include_router(fixes.router)
 
 
 def query(sql: str, params: dict) -> list[dict]:
@@ -116,15 +120,68 @@ def master_data_gaps(hours: int = Hours, area_id: Optional[int] = None):
     )
 
 
+@app.get("/api/config")
+def get_config():
+    return fixes.config()
+
+
 @app.get("/api/running-sizes")
-def running_sizes(area_id: Optional[int] = None):
+def running_sizes(area_id: Optional[int] = None, hours: int = Hours):
+    """Equipment in runningsize_lookup, plus DBM equipment seen in the window without a row."""
     return query(
         """SELECT r.equipment_id, r.rim_size,
                   master.fn_rim_status(master.fn_rim_key(r.rim_size), %(area_id)s::int) AS rim_master_status,
                   r.created_by, r.dtandtime
            FROM   master.runningsize_lookup r
-           ORDER  BY r.equipment_id""",
-        {"area_id": area_id},
+           UNION ALL
+           SELECT DISTINCT d.equipment_id, NULL, 'NOT SET', NULL, NULL::timestamp
+           FROM   dbm.o_production d
+           WHERE  d.dtandtime >= (now() - make_interval(hours => %(hours)s))::timestamp
+             AND  d.equipment_id IS NOT NULL
+             AND  NOT EXISTS (SELECT 1 FROM master.runningsize_lookup r WHERE r.equipment_id = d.equipment_id)
+           ORDER  BY 1""",
+        {"area_id": area_id, "hours": hours},
+    )
+
+
+@app.get("/api/rims")
+def rims():
+    """rim_master, for picking a rim in the fix dialogs."""
+    return query(
+        """SELECT rim_id, name, master.fn_rim_key(name) AS rim_key, isactive, local_area_id, description
+           FROM   master.rim_master
+           ORDER  BY isactive DESC NULLS LAST, master.fn_rim_key(name), rim_id""",
+        {},
+    )
+
+
+@app.get("/api/material/{material_id}")
+def material_mapping(material_id: int):
+    """Rim mappings of one material with rim status and the equipment running each rim."""
+    return query(
+        """SELECT m.id, m.material_id, m.rim_size, m.area_id, m.created_by, m.dtandtime,
+                  master.fn_rim_status(master.fn_rim_key(m.rim_size), m.area_id) AS rim_master_status,
+                  (SELECT rm.rim_id FROM master.rim_master rm
+                   WHERE  master.fn_rim_key(rm.name) = master.fn_rim_key(m.rim_size)
+                      OR  rm.rim_id::text = master.fn_rim_key(m.rim_size)
+                   ORDER  BY (rm.local_area_id IS NOT DISTINCT FROM m.area_id) DESC, rm.rim_id LIMIT 1) AS rim_id,
+                  (SELECT array_agg(r.equipment_id ORDER BY r.equipment_id)
+                   FROM   master.runningsize_lookup r
+                   WHERE  master.fn_rim_key(r.rim_size) = master.fn_rim_key(m.rim_size)) AS equipment_running
+           FROM   master.material_size_lookup m
+           WHERE  m.material_id = %(material_id)s
+           ORDER  BY m.id""",
+        {"material_id": material_id},
+    )
+
+
+@app.get("/api/audit")
+def audit_log(limit: int = Query(100, ge=1, le=1000)):
+    return query(
+        """SELECT id, dtandtime, user_name, action, table_name, row_ref, before, after
+           FROM   master.rim_validation_audit
+           ORDER  BY id DESC LIMIT %(limit)s""",
+        {"limit": limit},
     )
 
 

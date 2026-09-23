@@ -1,11 +1,14 @@
 -- Master-data gap report for rim-size routing. One row per finding.
 --   severity: ERROR (tires will fail validation) / WARN (risky data) / INFO
--- Production checks (PROD_*) only look at curing.o_production in [p_from, p_to).
-CREATE OR REPLACE FUNCTION master.fn_rim_master_data_gaps(
+--   fix_ref:  the keys a fix needs (material_id, row_id, equipment_id, rim_size, ...)
+-- Production checks (PROD_*, DBM_*) only look at the window [p_from, p_to).
+DROP FUNCTION IF EXISTS master.fn_rim_master_data_gaps(timestamp, timestamp, int);
+
+CREATE FUNCTION master.fn_rim_master_data_gaps(
     p_from     timestamp DEFAULT (now() - interval '2 days')::timestamp,
     p_to       timestamp DEFAULT now()::timestamp,
     p_area_id  int       DEFAULT NULL)
-RETURNS TABLE(severity text, check_code text, entity text, entity_ref text, detail text)
+RETURNS TABLE(severity text, check_code text, entity text, entity_ref text, detail text, fix_ref jsonb)
 LANGUAGE sql STABLE AS $$
 WITH msl AS (
     SELECT m.*, master.fn_rim_key(m.rim_size) AS rim_key
@@ -26,25 +29,30 @@ findings AS (
     -- (several rim sizes per material are allowed; only real defects are flagged)
     SELECT 'INFO', 'MSL_MULTI_RIM', 'material_size_lookup',
            'material_id=' || material_id || ', area_id=' || COALESCE(area_id::text, 'NULL'),
-           'Accepts rim sizes ' || string_agg(DISTINCT rim_key, ',')
+           'Accepts rim sizes ' || string_agg(DISTINCT rim_key, ','),
+           jsonb_build_object('material_id', material_id, 'area_id', area_id)
     FROM   msl GROUP BY material_id, area_id
     HAVING count(DISTINCT rim_key) > 1
 
     UNION ALL
     SELECT 'WARN', 'MSL_DUPLICATE_ROW', 'material_size_lookup',
            'material_id=' || material_id || ', area_id=' || COALESCE(area_id::text, 'NULL'),
-           count(*) || ' rows for rim ' || rim_key || ' (ids ' || string_agg(id::text, ',' ORDER BY id) || ')'
+           count(*) || ' rows for rim ' || rim_key || ' (ids ' || string_agg(id::text, ',' ORDER BY id) || ')',
+           jsonb_build_object('material_id', material_id, 'area_id', area_id, 'rim_size', rim_key,
+                              'row_ids', array_agg(id ORDER BY id))
     FROM   msl GROUP BY material_id, area_id, rim_key
     HAVING count(*) > 1
 
     UNION ALL
     SELECT 'ERROR', 'MSL_BLANK_RIM', 'material_size_lookup', 'id=' || id,
-           'material_id=' || material_id || ' has blank rim_size'
+           'material_id=' || material_id || ' has blank rim_size',
+           jsonb_build_object('material_id', material_id, 'row_id', id)
     FROM   msl WHERE rim_key IS NULL
 
     UNION ALL
     SELECT 'WARN', 'MSL_NULL_AREA', 'material_size_lookup', 'id=' || id,
-           'material_id=' || material_id || ' has no area_id'
+           'material_id=' || material_id || ' has no area_id',
+           jsonb_build_object('material_id', material_id, 'row_id', id)
     FROM   msl WHERE area_id IS NULL
 
     UNION ALL
@@ -53,7 +61,8 @@ findings AS (
     SELECT CASE WHEN x.has_active THEN 'WARN' ELSE 'ERROR' END,
            'MSL_RIM_INACTIVE', 'material_size_lookup', 'id=' || x.id,
            'material_id=' || x.material_id || ' rim ' || x.rim_key || ' is inactive in rim_master'
-           || CASE WHEN x.has_active THEN ' (other allowed rims are active)' ELSE ' (no active rim left)' END
+           || CASE WHEN x.has_active THEN ' (other allowed rims are active)' ELSE ' (no active rim left)' END,
+           jsonb_build_object('material_id', x.material_id, 'row_id', x.id, 'rim_size', x.rim_key, 'area_id', x.area_id)
     FROM  (SELECT m.*, master.fn_rim_status(m.rim_key, m.area_id) AS st,
                   EXISTS (SELECT 1 FROM msl m2
                           WHERE  m2.material_id = m.material_id AND m2.rim_key IS NOT NULL
@@ -64,7 +73,8 @@ findings AS (
 
     UNION ALL
     SELECT 'INFO', 'MSL_SIZE_NOT_RUNNING', 'material_size_lookup', 'rim=' || m.rim_key,
-           count(DISTINCT m.material_id) || ' material(s) accept rim ' || m.rim_key || ' but no equipment is running it'
+           count(DISTINCT m.material_id) || ' material(s) accept rim ' || m.rim_key || ' but no equipment is running it',
+           jsonb_build_object('rim_size', m.rim_key)
     FROM   msl m
     WHERE  m.rim_key IS NOT NULL
       AND  NOT EXISTS (SELECT 1 FROM run r WHERE r.rim_key = m.rim_key)
@@ -72,7 +82,8 @@ findings AS (
 
     UNION ALL
     SELECT 'WARN', 'MSL_MATERIAL_NOT_RUNNABLE', 'material_size_lookup', 'material_id=' || m.material_id,
-           'None of the allowed rims (' || string_agg(DISTINCT m.rim_key, ',') || ') is running on any equipment'
+           'None of the allowed rims (' || string_agg(DISTINCT m.rim_key, ',') || ') is running on any equipment',
+           jsonb_build_object('material_id', m.material_id)
     FROM   msl m
     WHERE  m.rim_key IS NOT NULL
     GROUP  BY m.material_id
@@ -81,12 +92,14 @@ findings AS (
     -- runningsize_lookup -----------------------------------------------------
     UNION ALL
     SELECT 'ERROR', 'RUN_BLANK_RIM', 'runningsize_lookup', 'equipment_id=' || equipment_id,
-           'Equipment has blank running rim_size'
+           'Equipment has blank running rim_size',
+           jsonb_build_object('equipment_id', equipment_id)
     FROM   run WHERE rim_key IS NULL
 
     UNION ALL
     SELECT 'ERROR', 'RUN_RIM_INACTIVE', 'runningsize_lookup', 'equipment_id=' || equipment_id,
-           'Running rim ' || rim_key || ' is inactive in rim_master'
+           'Running rim ' || rim_key || ' is inactive in rim_master',
+           jsonb_build_object('equipment_id', equipment_id, 'rim_size', rim_key)
     FROM  (SELECT run.*, master.fn_rim_status(rim_key, p_area_id) AS st FROM run WHERE rim_key IS NOT NULL) x
     WHERE  st <> 'ACTIVE'
 
@@ -94,7 +107,9 @@ findings AS (
     UNION ALL
     SELECT 'WARN', 'RIM_DUPLICATE_NAME', 'rim_master',
            'area_id=' || COALESCE(local_area_id::text, 'NULL') || ', name=' || master.fn_rim_key(name),
-           'rim_ids ' || string_agg(rim_id::text, ',' ORDER BY rim_id)
+           'rim_ids ' || string_agg(rim_id::text, ',' ORDER BY rim_id),
+           jsonb_build_object('area_id', local_area_id, 'rim_size', master.fn_rim_key(name),
+                              'rim_ids', array_agg(rim_id ORDER BY rim_id))
     FROM   master.rim_master
     WHERE  p_area_id IS NULL OR local_area_id = p_area_id
     GROUP  BY local_area_id, master.fn_rim_key(name)
@@ -105,14 +120,15 @@ findings AS (
            concat_ws('; ',
                CASE WHEN master.fn_rim_key(name) IS NULL THEN 'name is blank' END,
                CASE WHEN isactive IS NULL THEN 'isactive is NULL' END,
-               CASE WHEN local_area_id IS NULL THEN 'local_area_id is NULL' END)
+               CASE WHEN local_area_id IS NULL THEN 'local_area_id is NULL' END),
+           jsonb_build_object('rim_id', rim_id)
     FROM   master.rim_master
     WHERE  (p_area_id IS NULL OR local_area_id = p_area_id OR local_area_id IS NULL)
       AND  (master.fn_rim_key(name) IS NULL OR isactive IS NULL OR local_area_id IS NULL)
 
     -- formatting drift (not an error today, breaks exact-match code) ---------
     UNION ALL
-    SELECT 'INFO', 'FORMAT_DRIFT', src, ref, 'Value ''' || val || ''' is not trimmed/upper-case'
+    SELECT 'INFO', 'FORMAT_DRIFT', src, ref, 'Value ''' || val || ''' is not trimmed/upper-case', '{}'::jsonb
     FROM  (SELECT 'material_size_lookup' src, 'id=' || id ref, rim_size val FROM msl
            UNION ALL SELECT 'runningsize_lookup', 'equipment_id=' || equipment_id, rim_size FROM run
            UNION ALL SELECT 'rim_master', 'rim_id=' || rim_id, name FROM master.rim_master) x
@@ -121,46 +137,52 @@ findings AS (
     -- production (o_production) ---------------------------------------------
     UNION ALL
     SELECT 'ERROR', 'PROD_MATERIAL_NO_SIZE', 'o_production', 'material_id=' || p.material_id,
-           count(*) || ' tire(s) produced, last ' || date_trunc('second', max(p.dtandtime)) || ', no rim size mapped'
+           count(*) || ' tire(s) produced, last ' || date_trunc('second', max(p.dtandtime)) || ', no rim size mapped',
+           jsonb_build_object('material_id', p.material_id)
     FROM   prod p
     WHERE  NOT EXISTS (SELECT 1 FROM msl m WHERE m.material_id = p.material_id AND m.rim_key IS NOT NULL)
     GROUP  BY p.material_id
 
     UNION ALL
     SELECT 'ERROR', 'PROD_DUPLICATE_BARCODE', 'o_production', 'production_id=' || production_id,
-           count(*) || ' records, materials ' || string_agg(DISTINCT material_id::text, ',')
+           count(*) || ' records, materials ' || string_agg(DISTINCT material_id::text, ','),
+           jsonb_build_object('production_id', production_id)
     FROM   prod GROUP BY production_id
     HAVING count(DISTINCT material_id) > 1
 
     UNION ALL
     SELECT 'WARN', 'PROD_REPEATED_BARCODE', 'o_production', 'production_id=' || production_id,
-           count(*) || ' records for the same material'
+           count(*) || ' records for the same material',
+           jsonb_build_object('production_id', production_id)
     FROM   prod GROUP BY production_id
     HAVING count(*) > 1 AND count(DISTINCT material_id) = 1
 
     UNION ALL
     SELECT 'WARN', 'PROD_RECIPE_MULTI_MATERIAL', 'o_production', 'recipe_id=' || recipe_id,
-           'Recipe produced materials ' || string_agg(DISTINCT material_id::text, ',')
+           'Recipe produced materials ' || string_agg(DISTINCT material_id::text, ','),
+           jsonb_build_object('recipe_id', recipe_id)
     FROM   prod WHERE recipe_id IS NOT NULL
     GROUP  BY recipe_id HAVING count(DISTINCT material_id) > 1
 
     UNION ALL
     SELECT 'WARN', 'PROD_NO_RECIPE', 'o_production', 'equipment_id=' || equipment_id,
-           count(*) || ' record(s) with NULL recipe_id'
+           count(*) || ' record(s) with NULL recipe_id',
+           jsonb_build_object('curing_equipment_id', equipment_id)
     FROM   prod WHERE recipe_id IS NULL
     GROUP  BY equipment_id
 
     -- DBM equipment active in the window with no running rim size
     UNION ALL
     SELECT 'ERROR', 'DBM_NO_RUNNING_SIZE', 'runningsize_lookup', 'equipment_id=' || d.equipment_id,
-           'DBM equipment balanced ' || count(*) || ' tire(s) in the window but has no running rim size'
+           'DBM equipment balanced ' || count(*) || ' tire(s) in the window but has no running rim size',
+           jsonb_build_object('equipment_id', d.equipment_id)
     FROM   dbm.o_production d
     WHERE  d.dtandtime >= p_from AND d.dtandtime < p_to
       AND  d.equipment_id IS NOT NULL
       AND  NOT EXISTS (SELECT 1 FROM run r WHERE r.equipment_id = d.equipment_id AND r.rim_key IS NOT NULL)
     GROUP  BY d.equipment_id
 )
-SELECT * FROM findings f(severity, check_code, entity, entity_ref, detail)
+SELECT * FROM findings f(severity, check_code, entity, entity_ref, detail, fix_ref)
 ORDER  BY CASE f.severity WHEN 'ERROR' THEN 1 WHEN 'WARN' THEN 2 ELSE 3 END,
           f.check_code, f.entity_ref
 $$;
