@@ -51,6 +51,23 @@ cd ../backend/ConveyorRouting.Api && dotnet publish -c Release -o ../../publish
 #    on .NET 8 (LTS) instead:        dotnet publish -c Release -p:Tfm=net8.0 -o ../../publish
 ```
 
+### Hosting on IIS
+
+**Option A: separate IIS site for the UI** (like the SmartMES frontends)
+
+1. **Build the UI:** `cd frontend && npm ci && npm run build:iis`. This creates `frontend/dist/`: `index.html`, `assets/`, `config.js` and `web.config`.
+2. **Create the site:** in IIS Manager, add a website (e.g. port 8083) or an application under an existing site (e.g. `/rimvalidation`). Point it at a folder, and copy the contents of `dist/` into it. It is plain static files, so the app pool can be *No Managed Code*, and no extra IIS modules are needed.
+3. **Point the UI at the API:** edit `config.js` in that folder and set `apiBase: "http://<api-server>:<port>"`. You don't need to rebuild; refresh the browser.
+4. **Allow the UI's address on the API:** add it to `Cors:Origins` in the API's `appsettings.json` (e.g. `"http://10.200.233.14:8083"`), then restart the API.
+
+Use the same scheme for both. A UI on `https` can't call an API on `http`, because the browser blocks it.
+
+**Option B: one IIS site for API and UI.** Run `npm run build`, then `dotnet publish`. The API serves the UI from `wwwroot`, and `config.js` keeps `apiBase: ""`. Nothing to set for CORS.
+
+**API on IIS (both options):** host it like SmartMES_ReportAPI: install the ASP.NET Core Hosting Bundle (5.0, or 8.0 if published with `-p:Tfm=net8.0`) and use an app pool with *No Managed Code*. The API's `web.config` turns WebDAV off for this site, because IIS WebDAV answers PUT / PATCH / DELETE with *405 Method Not Allowed* and the fix buttons use them. If you see 405 on a fix, check that this `web.config` was deployed.
+
+Updating the UI: copy the new `index.html` and `assets/` over the old ones, and **keep your edited `config.js`**. `index.html` and `config.js` are sent with no-cache headers, so users get the new version on their next page load.
+
 Development: run the API (`dotnet run` in `backend/ConveyorRouting.Api`, http://localhost:5080) and the UI
 (`npm run dev` in `frontend`, http://localhost:3000). Vite forwards `/api` to the API. Swagger is at `/swagger`.
 

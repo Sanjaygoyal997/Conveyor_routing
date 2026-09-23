@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:iis": "vite build --outDir dist --emptyOutDir && node -e \"require('fs').copyFileSync('iis/web.config','dist/web.config')\"",
     "preview": "vite preview"
   },
   "dependencies": {

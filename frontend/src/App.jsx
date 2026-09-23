@@ -115,9 +115,10 @@ export default function App() {
     if (cfg.token_required) headers["X-Admin-Token"] = op.token;
     try {
       const out = await request(method, path, { body: body ?? undefined, headers });
-      showToast(out?.message || "Saved");
-      await Promise.all([validate(), loadRunning(), loadLookups()]);
+      // refresh first, so the tables are up to date when the confirmation shows
+      await Promise.all([validate(), loadRunning(), loadLookups()]).catch(() => {});
       setVersion((v) => v + 1);
+      showToast(out?.message || "Saved");
       return true;
     } catch (e) {
       showToast(e.message, true);

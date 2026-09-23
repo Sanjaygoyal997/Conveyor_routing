@@ -6,3 +6,4 @@ obj/
 node_modules/
 backend/ConveyorRouting.Api/wwwroot/
 publish/
+frontend/dist/

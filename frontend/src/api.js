@@ -1,6 +1,7 @@
 // Client for ConveyorRouting.Api. Every response is an OEMResponse {statusCode, data, message, error};
 // api() returns data, or throws Error(message). A JWT is fetched from /api/Auth/getToken (as in SmartMES).
-const BASE = import.meta.env.VITE_API_BASE || "";
+// API address: config.js (window.APP_CONFIG.apiBase, editable on the server), else VITE_API_BASE, else same site.
+const BASE = (window.APP_CONFIG?.apiBase || import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 let token = null;
 
 async function fetchToken() {
