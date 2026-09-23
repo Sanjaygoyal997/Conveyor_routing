@@ -99,6 +99,19 @@ r = c.patch(f"/api/fix/material-rim/{null_area['fix_ref']['row_id']}", json={"ar
 check("API: set area clears MSL_NULL_AREA",
       (r.status_code, any(g["check_code"] == "MSL_NULL_AREA" for g in c.get("/api/gaps").json())), (200, False))
 
+# -- change an existing mapping in place: material 108 R225245 (rim 8) -> R22524 (rim 3)
+row = next(m for m in c.get("/api/material/108").json() if m["rim_name"] == "R225245")
+r = c.put(f"/api/fix/material-rim/{row['id']}/rim", json={"rim_id": 3}, headers=H)
+check("API: change rim in place",
+      (r.json()["message"], sorted(m["rim_name"] for m in c.get("/api/material/108").json()), row["id"] in [m["id"] for m in c.get("/api/material/108").json()]),
+      ("Material 108: rim R225245 changed to R22524", ["R195225", "R22524"], True))
+check("API: change to a rim it already has -> 409",
+      c.put(f"/api/fix/material-rim/{row['id']}/rim", json={"rim_id": 2}, headers=H).status_code, 409)
+check("API: change to an inactive rim -> 409",
+      c.put(f"/api/fix/material-rim/{row['id']}/rim", json={"rim_id": 9}, headers=H).status_code, 409)
+check("API: change to a rim of another area -> 409",
+      c.put(f"/api/fix/material-rim/{row['id']}/rim", json={"rim_id": 13}, headers=H).status_code, 409)
+
 # -- remove a mapping
 row = next(m for m in c.get("/api/material/107").json() if m["rim_name"] == "R17520")
 r = c.delete(f"/api/fix/material-rim/{row['id']}", headers=H)
@@ -109,7 +122,7 @@ check("API: remove mapping", (r.json()["message"], [m["rim_name"] for m in c.get
 log = c.get("/api/audit").json()
 check("API: every write audited", [a["action"] for a in reversed(log)],
       ["map_rim", "set_running_rim", "set_running_rim", "set_running_rim", "set_running_rim",
-       "activate_rim", "dedupe", "set_area", "unmap_rim"])
+       "activate_rim", "dedupe", "set_area", "change_rim", "unmap_rim"])
 e504 = next(a for a in log if a["row_ref"] == "equipment_id=504")
 check("API: audit keeps before/after", (e504["before"]["rim_size"], e504["after"]["rim_size"]), ("2", "8"))
 

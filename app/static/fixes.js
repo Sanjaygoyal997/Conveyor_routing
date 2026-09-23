@@ -326,15 +326,22 @@ function onFix(table, row, el) {
 }
 
 // ---- audit log ----------------------------------------------------------------
+// rim_size holds a rim_id: show it as "R20225 (1)" in the change log
+function showVal(k, v) {
+  if (k !== "rim_size" || v == null) return v;
+  const r = RIMS.find((x) => String(x.rim_id) === String(v).trim());
+  return r ? `${r.name} (${v})` : v;
+}
 function diff(before, after) {
   const keys = [...new Set([...Object.keys(before || {}), ...Object.keys(after || {})])]
     .filter((k) => !["created_by", "dtandtime"].includes(k) && JSON.stringify(before?.[k]) !== JSON.stringify(after?.[k]));
-  if (!before) return "added: " + keys.map((k) => `${k}=${after[k]}`).join(", ");
-  if (!after) return "deleted: " + Object.entries(before).filter(([k]) => !["created_by", "dtandtime"].includes(k)).map(([k, v]) => `${k}=${v}`).join(", ");
-  return keys.map((k) => `${k}: ${before[k]} → ${after[k]}`).join(", ");
+  if (!before) return "added: " + keys.map((k) => `${k}=${showVal(k, after[k])}`).join(", ");
+  if (!after) return "deleted: " + Object.entries(before).filter(([k]) => !["created_by", "dtandtime"].includes(k)).map(([k, v]) => `${k}=${showVal(k, v)}`).join(", ");
+  return keys.map((k) => `${k}: ${showVal(k, before[k])} → ${showVal(k, after[k])}`).join(", ");
 }
 async function loadAudit() {
   try {
+    if (!RIMS.length) await loadLookups();
     const rows = await api("/api/audit", { limit: 200 });
     $("#table-audit").innerHTML = rows.length ? `<table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Table</th><th>Row</th><th>Change</th></tr></thead><tbody>${
       rows.map((r) => `<tr><td>${esc(fmt(r.dtandtime))}</td><td>${esc(r.user_name)}</td><td>${esc(r.action)}</td><td>${esc(r.table_name)}</td>

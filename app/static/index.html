@@ -79,8 +79,20 @@
         <p class="hint">Which rims can this recipe's tires run on (for the selected machine area)?</p>
         <label class="qf-field">Recipe <select id="qfRecipe"><option>Loading&hellip;</option></select></label>
         <div id="qfRecipeInfo"></div>
-        <label class="qf-field">Add rim <select id="qfRecipeRim"></select></label>
-        <button id="qfAddRim" class="primary">Add rim to recipe</button>
+        <div class="qf-field">Change rim
+          <div class="qf-row">
+            <select id="qfChangeFrom" aria-label="Current rim"></select>
+            <span>→</span>
+            <select id="qfChangeTo" aria-label="New rim"></select>
+            <button id="qfChange" class="primary">Change rim</button>
+          </div>
+        </div>
+        <div class="qf-field">Add rim
+          <div class="qf-row">
+            <select id="qfRecipeRim" aria-label="Rim to add"></select>
+            <button id="qfAddRim" class="primary">Add rim to recipe</button>
+          </div>
+        </div>
         <p class="qf-label" id="qfRecipeOverviewTitle">Recipes in WIP: current rim mapping</p>
         <div class="table-wrap qf-overview" id="qfRecipeOverview"></div>
       </div>

@@ -174,6 +174,42 @@ def set_material_rim_area(row_id: int, body: AreaIn, user: str = Depends(operato
     return run_write(tx)
 
 
+class RimIn(BaseModel):
+    rim_id: int
+
+
+@router.put("/api/fix/material-rim/{row_id}/rim")
+def change_material_rim(row_id: int, body: RimIn, user: str = Depends(operator)):
+    """Change the rim of an existing mapping row in place (keeps material and area)."""
+    def tx(conn):
+        row = conn.execute(
+            """SELECT t.id, t.material_id, t.area_id, master.fn_rim_name(t.rim_size) AS rim_name, to_jsonb(t.*) AS j
+               FROM master.material_size_lookup t WHERE t.id = %s FOR UPDATE""",
+            (row_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, f"Mapping id {row_id} not found")
+        rim = active_rim(conn, body.rim_id, row["area_id"])
+        if (rim["name"] or "").strip().upper() == "NONE":
+            raise HTTPException(409, "Rim None means 'equipment not available' and can't be mapped to a material")
+        clash = conn.execute(
+            """SELECT id FROM master.material_size_lookup
+               WHERE material_id = %s AND area_id IS NOT DISTINCT FROM %s AND id <> %s
+                 AND master.fn_rim_name(rim_size) = master.fn_rim_name(%s)""",
+            (row["material_id"], row["area_id"], row_id, rim_value(rim)),
+        ).fetchone()
+        if clash:
+            raise HTTPException(409, f"Material {row['material_id']} is already mapped to rim {rim['name']} (id {clash['id']})")
+        after = conn.execute(
+            """UPDATE master.material_size_lookup t SET rim_size = %s, created_by = %s, dtandtime = now()
+               WHERE t.id = %s RETURNING to_jsonb(t.*) AS j""",
+            (rim_value(rim), user, row_id),
+        ).fetchone()
+        audit(conn, user, "change_rim", "material_size_lookup", f"id={row_id}", row["j"], after["j"])
+        return {"ok": True, "message": f"Material {row['material_id']}: rim {row['rim_name']} changed to {rim['name']}"}
+    return run_write(tx)
+
+
 @router.post("/api/fix/material-rim/dedupe")
 def dedupe_material_rim(body: DedupeIn, user: str = Depends(operator)):
     """Keep the oldest row of a duplicated material/area/rim mapping, delete the rest."""

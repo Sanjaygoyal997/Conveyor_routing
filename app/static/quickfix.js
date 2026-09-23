@@ -4,7 +4,7 @@
 //   DBM     -> running rim    (runningsize_lookup): pick the DBM first, then its rim
 // Uses app.js (state, api, esc, fmt, $) and fixes.js (RIMS, RUNNING, loadLookups, activeRims, write, changeoverImpact, pillHtml).
 
-const qf = { recipe: "", eq: "" };   // current selections survive refreshes
+const qf = { recipe: "", eq: "", maps: [] };   // current selections survive refreshes; maps = selected recipe's rows
 let QF_DBMS = [];                    // every DBM machine (/api/dbm-machines)
 
 // DBM area selected? Then the machine list is every DBM machine; otherwise the machine-check rows.
@@ -70,9 +70,11 @@ async function renderRecipePart() {
   const area = $("#areaId").value.trim();
   const maps = (await api(`/api/material/${r.material_id}`))
     .filter((m) => !area || m.area_id == null || String(m.area_id) === area);
+  qf.maps = maps;
   const chips = maps.map((m) => {
     const bad = m.rim_master_status !== "ACTIVE";
-    return `<span class="chip${bad ? " bad" : ""}" title="${bad ? "Inactive in rim_master" : "Active"}">${esc(m.rim_name)}` +
+    return `<span class="chip${bad ? " bad" : ""}" title="${bad ? "Inactive in rim_master" : "Active"}">` +
+      `<button class="link chip-name" data-qf-pickfrom="${m.id}" title="Change this rim">${esc(rimLabel(m.rim_name))}</button>` +
       (bad && m.rim_id != null ? ` <button class="link" data-qf-activate="${m.rim_id}" data-name="${esc(m.rim_name)}">reactivate</button>` : "") +
       ` <button class="link" aria-label="Remove ${esc(m.rim_name)}" data-qf-unmap="${m.id}" data-name="${esc(m.rim_name)}">✕</button></span>`;
   }).join(" ");
@@ -85,6 +87,12 @@ async function renderRecipePart() {
   $("#qfRecipeRim").innerHTML = addable.length ? `<option value="">Select rim…</option>` + rimOptions(addable)
                                                : `<option value="">No other active rims</option>`;
   $("#qfAddRim").disabled = true;   // enabled once a rim is chosen
+  // change an existing mapping in place: current rim -> new rim
+  $("#qfChangeFrom").innerHTML = maps.length
+    ? `<option value="">Current rim…</option>` + maps.map((m) => `<option value="${m.id}">${esc(rimLabel(m.rim_name))}</option>`).join("")
+    : `<option value="">No rim to change</option>`;
+  $("#qfChangeTo").innerHTML = `<option value="">New rim…</option>` + rimOptions(addable);
+  $("#qfChange").disabled = true;
   renderRecipeOverview();
 }
 
@@ -132,6 +140,9 @@ function renderOverview() {
 function renderRecipeOverview() {
   const rows = recipeRows();
   const pending = RIMS.find((r) => String(r.rim_id) === $("#qfRecipeRim").value);
+  const chFrom = qf.maps.find((m) => String(m.id) === $("#qfChangeFrom").value);
+  const chTo = RIMS.find((r) => String(r.rim_id) === $("#qfChangeTo").value);
+  $("#qfChange").disabled = !(chFrom && chTo) || !CONFIG.writes_enabled;
   $("#qfRecipeOverviewTitle").textContent =
     `Recipes in WIP (${$("#hours").selectedOptions[0]?.textContent.toLowerCase() || "look-back"}): current rim mapping`;
   $("#qfRecipeOverview").innerHTML = rows.length ? `<table><thead><tr><th>Recipe</th><th class="num">WIP tires</th><th>Rims</th><th>Status</th><th>DBMs</th></tr></thead><tbody>${
@@ -139,7 +150,8 @@ function renderRecipeOverview() {
       const sel = recipeKey(r) === qf.recipe;
       const rims = (r.allowed_rim_sizes || []).map((k) => {
         const bad = (r.inactive_rim_sizes || []).includes(k);
-        return bad ? `<s title="inactive">${esc(rimLabel(k))}</s>` : esc(rimLabel(k));
+        const txt = bad ? `<s title="inactive">${esc(rimLabel(k))}</s>` : esc(rimLabel(k));
+        return sel && chFrom && chTo && chFrom.rim_name === k ? `${txt} → <b>${esc(chTo.name)}</b>` : txt;
       }).join(", ") || "—";
       const add = sel && pending ? ` <b>+ ${esc(pending.name)}</b>` : "";
       const name = r.recipe_id == null ? `Material ${r.material_id}` : `Recipe ${esc(r.recipe_id)}`;
@@ -168,6 +180,17 @@ function openQuickFix({ recipe, eq } = {}) {
 
 // ---- events
 $("#qfRecipe").addEventListener("change", (e) => { qf.recipe = e.target.value; renderRecipePart(); });
+$("#qfChangeFrom").addEventListener("change", renderRecipeOverview);
+$("#qfChangeTo").addEventListener("change", renderRecipeOverview);
+$("#qfChange").addEventListener("click", () => {
+  const from = qf.maps.find((m) => String(m.id) === $("#qfChangeFrom").value);
+  const to = RIMS.find((r) => String(r.rim_id) === $("#qfChangeTo").value);
+  const r = recipeRows().find((x) => recipeKey(x) === qf.recipe);
+  if (!from || !to || !r) return;
+  write("PUT", `/api/fix/material-rim/${from.id}/rim`, { rim_id: to.rim_id },
+    `Change rim ${rimLabel(from.rim_name)} to ${to.name} for recipe ${r.recipe_id ?? "—"} (material ${r.material_id})?`,
+    `Updates material_size_lookup row ${from.id}. Tires of this recipe will run on ${to.name} instead of ${rimLabel(from.rim_name)}.`);
+});
 $("#qfRecipeRim").addEventListener("change", () => {
   $("#qfAddRim").disabled = !$("#qfRecipeRim").value || !CONFIG.writes_enabled;
   renderRecipeOverview();
@@ -202,6 +225,8 @@ $("#qfAddRim").addEventListener("click", () => {
 });
 
 $("#qfRecipeInfo").addEventListener("click", (ev) => {
+  const pick = ev.target.closest("[data-qf-pickfrom]");
+  if (pick) { $("#qfChangeFrom").value = pick.dataset.qfPickfrom; $("#qfChangeTo").focus(); renderRecipeOverview(); return; }
   const un = ev.target.closest("[data-qf-unmap]");
   const act = ev.target.closest("[data-qf-activate]");
   const r = recipeRows().find((x) => recipeKey(x) === qf.recipe);
