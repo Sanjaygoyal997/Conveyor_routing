@@ -6,7 +6,7 @@
 --   wip_tires_fit     WIP tires it can take with its current rim
 --   only_here_tires   WIP tires that can go ONLY to this machine (a changeover
 --                     would block them)
---   suggested_rim     a changeover that unblocks WIP tires (tires with an
+--   suggested_rim     a changeover that keeps WIP tires off the exit conveyor (tires with an
 --                     active rim but no eligible machine) with a net gain:
 --                     unblocks_tires - blocks_tires > 0
 -- Suggestions are made per rim: when several machines could take the same
@@ -19,8 +19,8 @@
 --   INFO_NOT_AVAILABLE          running None
 --   NG_NO_RUNNING_RIM           DBM machine without a running rim
 --   NG_RIM_INACTIVE             running rim is inactive in rim_master
---   NG_CHANGEOVER_NEEDED        idle while WIP tires are blocked; suggestion given
---   WARN_CHANGEOVER_SUGGESTED   has WIP, but a changeover would unblock more
+--   NG_CHANGEOVER_NEEDED        idle while WIP tires would go to the exit conveyor; suggestion given
+--   WARN_CHANGEOVER_SUGGESTED   has WIP, but a changeover would keep more tires off the exit conveyor
 DROP FUNCTION IF EXISTS master.fn_machine_rim_check(timestamp, timestamp, int[], int[], int, boolean);
 
 CREATE FUNCTION master.fn_machine_rim_check(
@@ -133,8 +133,8 @@ SELECT f.status,
          END,
          CASE WHEN f.only_here > 0 THEN f.only_here || ' can only go here.' END,
          CASE WHEN f.s_rim IS NOT NULL THEN
-              'Change over to ' || f.s_rim || ': unblocks ' || f.gain || ' tire(s)'
-              || CASE WHEN f.loss > 0 THEN ', blocks ' || f.loss ELSE '' END || '.' END),
+              'Change over to ' || f.s_rim || ': keeps ' || f.gain || ' tire(s) off the exit conveyor'
+              || CASE WHEN f.loss > 0 THEN ', sends ' || f.loss || ' to it' ELSE '' END || '.' END),
        f.equipment_id, f.rim, f.st, f.fit, f.only_here, f.s_rim, f.s_rim_id, f.gain, f.loss
 FROM   final f
 ORDER  BY CASE WHEN f.status LIKE 'NG%' THEN 0 WHEN f.status LIKE 'WARN%' THEN 1 ELSE 2 END, f.equipment_id

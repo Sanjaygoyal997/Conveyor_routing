@@ -102,9 +102,9 @@ function changeoverImpact(equipmentId, newRimName) {
   const gained = rows.filter((r) => !(r.eligible_equipment || []).length && fits(r));
   const n = (list) => list.reduce((s, r) => s + Number(r.wip_tires || 0), 0);
   const parts = [`Equipment ${eq} is running ${cur?.rim_name ?? "nothing"} now.`];
-  if (gained.length) parts.push(`Unblocks ${n(gained)} WIP tire(s): material ${gained.map((r) => r.material_id).join(", ")}.`);
-  parts.push(lost.length ? `Blocks ${n(lost)} WIP tire(s) that can only go to ${eq}: material ${lost.map((r) => r.material_id).join(", ")}.`
-                         : "No WIP tire loses its only eligible equipment.");
+  if (gained.length) parts.push(`Keeps ${n(gained)} WIP tire(s) off the exit conveyor: material ${gained.map((r) => r.material_id).join(", ")}.`);
+  parts.push(lost.length ? `Sends ${n(lost)} WIP tire(s) to the exit conveyor (they can only go to ${eq}): material ${lost.map((r) => r.material_id).join(", ")}.`
+                         : "No WIP tire goes to the exit conveyor because of this change.");
   return parts.join(" ");
 }
 
@@ -246,7 +246,7 @@ function rimDialog(key) {
     const mats = d?.materials || [];
     return `
       <p class="dlg-status">${rim ? pillHtml("ACTIVE") : pillHtml("INACTIVE")}
-        ${d ? ` ${d.wip_tires} WIP tires accept this rim, ${d.blocked_tires} blocked` : " No WIP tires accept this rim"}</p>
+        ${d ? ` ${d.wip_tires} WIP tires accept this rim, ${d.blocked_tires} to exit conveyor` : " No WIP tires accept this rim"}</p>
       ${!rim && anyRim ? `<p><button class="sm" data-act="activate" data-rim="${anyRim.rim_id}"${dis()}>Reactivate rim ${esc(anyRim.name)}</button></p>` : ""}
       ${mats.length ? `<h4>Materials in WIP</h4><div class="chips">${mats.map((m) => `<button class="sm" data-act="material" data-id="${m}">Material ${m}</button>`).join("")}</div>` : ""}
       <h4>Running on</h4>

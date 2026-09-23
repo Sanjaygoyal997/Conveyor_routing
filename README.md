@@ -6,6 +6,12 @@ It works in two ways:
 - **In advance, on WIP between Curing and DBM:** checks each material in WIP, and the master data it relies on.
 - **At scan time:** checks a single barcode.
 
+**Routing rule (conveyor):** a scanned tire's `material_id` gives its allowed rims (`material_size_lookup`,
+DBM area). The conveyor may send it to any DBM whose running rim (`runningsize_lookup`) is one of them, and
+traffic decides which one. When no DBM fits, the tire goes to the **exit conveyor**. This tool runs the same
+rule in advance on the WIP, so gaps are fixed before tires reach the exit conveyor. Changes made here update
+the same tables the conveyor reads, so they apply to the next scanned tire.
+
 **WIP** means tires cured in the last 2 days (`curing.o_production`) whose barcode is not yet in
 `dbm.o_production`. `dbm.o_production.barcode` equals `curing.o_production.production_id` (confirmed by the plant).
 

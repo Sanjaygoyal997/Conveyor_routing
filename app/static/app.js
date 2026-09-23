@@ -52,7 +52,7 @@ const TABLES = {
       { key: "wip_tires_fit", label: "WIP tires fit", num: true },
       { key: "only_here_tires", label: "Only here", num: true },
       { key: "suggested_rim", label: "Suggested rim" },
-      { key: "unblocks_tires", label: "Unblocks", num: true },
+      { key: "unblocks_tires", label: "Kept off exit", num: true },
       { key: "blocks_tires", label: "Blocks", num: true },
       { key: "message", label: "Message" },
       { key: "_fix", label: "", actions: true },
@@ -64,7 +64,7 @@ const TABLES = {
       { key: "status", label: "Status", pill: true },
       { key: "rim_size", label: "Rim size" },
       { key: "wip_tires", label: "WIP tires accepting", num: true },
-      { key: "blocked_tires", label: "Blocked tires", num: true },
+      { key: "blocked_tires", label: "To exit conveyor", num: true },
       { key: "materials", label: "Materials" },
       { key: "equipment_running", label: "Equipment running" },
       { key: "_fix", label: "", actions: true },
@@ -215,7 +215,7 @@ function renderSummary(recipes, rims, gaps, machines = []) {
     ["WIP tires (Curing → DBM)", tires, ""],
     ["Materials in WIP", recipes.length, ""],
     ["Materials with issues", ngRows.length, ngRows.length ? "ng" : "ok"],
-    ["WIP tires blocked", ngTires, ngTires ? "ng" : "ok"],
+    ["WIP tires → exit conveyor", ngTires, ngTires ? "ng" : "ok"],
     ["Rim sizes not running", rimsNotRunning, rimsNotRunning ? "ng" : "ok"],
     ["Machines to fix / change over", toChange, toChange ? "ng" : "ok"],
     ["Master data errors", errors, errors ? "ng" : "ok"],
@@ -285,7 +285,8 @@ async function checkBarcode(ev) {
     const rims = [...new Set(v.map((x) => x.rim_size).filter(Boolean))].join(", ");
     const headline = ok
       ? (equipment.length ? `OK: can go to equipment ${equipment.join(", ")}` : "OK")
-      : `${first.status}`;
+      // no DBM fits -> the conveyor sends the tire to the exit conveyor (with a target DBM, NG only means "not this one")
+      : `${first.status}${$("#equipmentId").value.trim() ? " (not this DBM)" : " → exit conveyor"}`;
     const atDbm = r.dbm.length ? `Already balanced at DBM ${r.dbm[0].equipment_id} on ${fmt(r.dbm[0].dtandtime)}` : "Not yet at DBM (in WIP)";
     out.innerHTML = `
       <div class="result-banner ${ok ? "ok" : "ng"}">${esc(headline)}

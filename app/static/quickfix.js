@@ -54,7 +54,7 @@ async function renderQuickFix() {
   const sugg = (state.machines?.rows || []).filter((m) => m.suggested_rim);
   $("#qfSuggest").innerHTML = sugg.length
     ? `Suggested: ${sugg.map((m) => `<button class="sm fixbtn" data-qf-eq="${m.equipment_id}" data-qf-rim="${m.suggested_rim_id}">` +
-        `${m.equipment_id} → ${esc(m.suggested_rim)} (frees ${m.unblocks_tires})</button>`).join(" ")}`
+        `${m.equipment_id} → ${esc(m.suggested_rim)} (keeps ${m.unblocks_tires} off exit)</button>`).join(" ")}`
     : `<span class="hint">No changeover needed for the current WIP.</span>`;
   renderMachinePart();
 }
