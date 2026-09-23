@@ -98,6 +98,33 @@ check "Unknown barcode" \
 check "Quality hold" \
   "SELECT status FROM master.fn_validate_tire_barcode('T0009', 501, NULL, '{1}')" "NG_QUALITY_HOLD"
 
+M="master.fn_machine_rim_check(p_wip_states => '{1}')"
+check "Machine check: running rim per DBM machine vs WIP" \
+  "SELECT string_agg(equipment_id || ':' || status || COALESCE(':' || suggested_rim || ':+' || unblocks_tires, ''), ' ' ORDER BY equipment_id) FROM $M" \
+  "501:OK 502:OK 503:OK 504:OK 505:INFO_NO_WIP 506:NG_NO_RUNNING_RIM:R225245:+1 508:NG_RIM_INACTIVE 509:INFO_NOT_AVAILABLE"
+check "Machine check: tires that fit / can only go here" \
+  "SELECT string_agg(equipment_id || '=' || wip_tires_fit || '/' || only_here_tires, ' ' ORDER BY equipment_id) FROM $M WHERE equipment_id IN (501, 503, 504)" \
+  "501=4/0 503=1/1 504=3/1"
+check "Machine check: TUO machines are not listed for DBM" \
+  "SELECT count(*) FROM $M WHERE equipment_id IN (510, 601)" "0"
+
+# once 506 has a rim, suggest a changeover of an idle machine instead; never one that strands tires
+"${PSQL[@]}" -c "INSERT INTO master.runningsize_lookup (equipment_id, rim_size) VALUES (506, '5')"
+check "Machine check: a machine on an inactive rim is changed over first" \
+  "SELECT string_agg(equipment_id || ':' || status || ':' || suggested_rim, ' ') FROM $M WHERE suggested_rim IS NOT NULL" \
+  "508:NG_RIM_INACTIVE:R225245"
+"${PSQL[@]}" -c "UPDATE master.runningsize_lookup SET rim_size = '1' WHERE equipment_id = 508"
+check "Machine check: then the idle machine" \
+  "SELECT string_agg(equipment_id || ':' || status || ':' || suggested_rim, ' ') FROM $M WHERE suggested_rim IS NOT NULL" \
+  "505:NG_CHANGEOVER_NEEDED:R225245"
+"${PSQL[@]}" -c "UPDATE master.runningsize_lookup SET rim_size = '1' WHERE equipment_id IN (505, 506)"
+check "Machine check: no changeover that blocks as many tires as it unblocks" \
+  "SELECT count(*) FROM $M WHERE suggested_rim IS NOT NULL AND unblocks_tires <= blocks_tires" "0"
+check "Machine check: busy machine can be suggested when net gain" \
+  "SELECT string_agg(equipment_id || ':' || status, ' ') FROM $M WHERE suggested_rim IS NOT NULL" \
+  "504:WARN_CHANGEOVER_SUGGESTED"
+"${PSQL[@]}" -c "DELETE FROM master.runningsize_lookup WHERE equipment_id = 506; UPDATE master.runningsize_lookup SET rim_size = '5' WHERE equipment_id = 505; UPDATE master.runningsize_lookup SET rim_size = '4' WHERE equipment_id = 508"
+
 # UniversalRIM: switch 505 to UniversalRIM, check, then switch back
 "${PSQL[@]}" -c "UPDATE master.runningsize_lookup SET rim_size = '6' WHERE equipment_id = 505"
 check "UniversalRIM equipment takes tires with no running rim" \

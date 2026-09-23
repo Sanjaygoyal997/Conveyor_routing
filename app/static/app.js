@@ -42,6 +42,23 @@ const TABLES = {
       { key: "_fix", label: "", actions: true },
     ],
   },
+  machines: {
+    statusKey: "status",
+    columns: [
+      { key: "status", label: "Status", pill: true },
+      { key: "equipment_id", label: "Machine", num: true },
+      { key: "running_rim", label: "Running rim" },
+      { key: "rim_status", label: "Rim", pill: true,
+        pillMap: { ACTIVE: "ok", INACTIVE: "ng", "NOT SET": "ng", "NOT AVAILABLE": "warn", UNIVERSAL: "info" } },
+      { key: "wip_tires_fit", label: "WIP tires fit", num: true },
+      { key: "only_here_tires", label: "Only here", num: true },
+      { key: "suggested_rim", label: "Suggested rim" },
+      { key: "unblocks_tires", label: "Unblocks", num: true },
+      { key: "blocks_tires", label: "Blocks", num: true },
+      { key: "message", label: "Message" },
+      { key: "_fix", label: "", actions: true },
+    ],
+  },
   rims: {
     statusKey: "status",
     columns: [
@@ -189,7 +206,8 @@ function showError(msg) {
   el.textContent = msg || "";
 }
 
-function renderSummary(recipes, rims, gaps) {
+function renderSummary(recipes, rims, gaps, machines = []) {
+  const toChange = machines.filter((m) => pillClass(m.status) !== "ok" && !m.status.startsWith("INFO")).length;
   const tires = recipes.reduce((s, r) => s + Number(r.wip_tires || 0), 0);
   const ngRows = recipes.filter((r) => pillClass(r.status) === "ng");
   const ngTires = ngRows.reduce((s, r) => s + Number(r.wip_tires || 0), 0);
@@ -201,6 +219,7 @@ function renderSummary(recipes, rims, gaps) {
     ["Groups with issues", ngRows.length, ngRows.length ? "ng" : "ok"],
     ["WIP tires blocked", ngTires, ngTires ? "ng" : "ok"],
     ["Rim sizes not running", rimsNotRunning, rimsNotRunning ? "ng" : "ok"],
+    ["Machines to fix / change over", toChange, toChange ? "ng" : "ok"],
     ["Master data errors", errors, errors ? "ng" : "ok"],
   ];
   const el = $("#summary");
@@ -215,15 +234,17 @@ async function validate() {
   showError("");
   try {
     const p = filterParams();
-    const [recipes, rims, gaps] = await Promise.all([
+    const [recipes, rims, gaps, machines] = await Promise.all([
       api("/api/wip/readiness", p),
       api("/api/wip/demand", p),
       api("/api/gaps", { hours: p.hours, area_id: p.area_id }),
+      api("/api/wip/machines", p),
     ]);
     setRows("recipes", recipes);
+    setRows("machines", machines);
     setRows("rims", rims);
     setRows("gaps", gaps);
-    renderSummary(recipes, rims, gaps);
+    renderSummary(recipes, rims, gaps, machines);
   } catch (e) {
     showError(e.message);
   } finally {

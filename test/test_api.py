@@ -67,6 +67,11 @@ r = c.put("/api/fix/running/504", json={"rim_id": 8}, headers=H)
 check("API: change over 504 to R225245 fixes material 104", (r.status_code, status_of(104)), (200, "OK"))
 check("API: material 101 still routable on R20225", status_of(101), "OK")
 
+# -- machine check: after 504 went to R225245 nothing is blocked any more -> no suggestions
+machines = {m["equipment_id"]: m for m in c.get("/api/wip/machines", params={"wip_states": "1"}).json()}
+check("API: machine check lists DBM machines only", sorted(machines), [501, 502, 503, 504, 505, 506, 508, 509])
+check("API: 504 now fits the R225245 tires", (machines[504]["running_rim"], machines[504]["status"]), ("R225245", "OK"))
+
 # -- DBM_NO_RUNNING_SIZE: equipment 506 appears as NOT SET, then gets a rim
 check("API: DBM 506 listed as NOT SET", run[506]["rim_master_status"], "NOT SET")
 c.put("/api/fix/running/506", json={"rim_id": 2}, headers=H)

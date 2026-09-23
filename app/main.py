@@ -109,6 +109,21 @@ def wip_demand(
     )
 
 
+@app.get("/api/wip/machines")
+def wip_machines(
+    hours: int = Hours,
+    wip_states: Optional[str] = None,
+    ok_quality: Optional[str] = None,
+    area_id: Optional[int] = None,
+    exclude_at_dbm: bool = True,
+):
+    """One row per machine: is its running rim right for the current WIP? Suggests changeovers."""
+    return query(
+        f"SELECT * FROM master.fn_machine_rim_check({WIP_ARGS})",
+        wip_params(hours, wip_states, ok_quality, area_id, exclude_at_dbm),
+    )
+
+
 @app.get("/api/gaps")
 def master_data_gaps(hours: int = Hours, area_id: Optional[int] = None):
     return query(

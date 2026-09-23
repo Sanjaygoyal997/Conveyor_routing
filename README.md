@@ -53,6 +53,7 @@ Only rims that are active in `rim_master` can be picked.
 |---|---|
 | **Validate** button + summary | WIP tires, recipe/material groups, groups with issues, blocked tires, rim sizes not running, master-data errors |
 | WIP recipes | `fn_wip_rim_readiness`: one row per recipe + material in WIP |
+| Machines | `fn_machine_rim_check`: per machine, the WIP tires it can take, tires that can only go there, and a suggested changeover (**Apply** button) |
 | Rim sizes | `fn_wip_rim_demand`: WIP demand per rim size vs equipment running it |
 | Master data gaps | `fn_rim_master_data_gaps`: ERROR / WARN / INFO findings |
 | Barcode check | Scan a barcode, optionally with a target equipment. Shows the result plus its curing and DBM history |
@@ -102,6 +103,7 @@ rims that is active in `rim_master`.
 | `sql/03_fn_rim_master_data_gaps.sql` | `fn_rim_master_data_gaps(...)` | Full master-data gap report (ERROR / WARN / INFO) |
 | `sql/04_fn_validate_tire_barcode.sql` | `fn_validate_tire_barcode(...)` | Scan-time check of one barcode |
 | `sql/05_audit.sql` | `master.rim_validation_audit` | Log of every fix made from the UI |
+| `sql/06_fn_machine_rim_check.sql` | `fn_machine_rim_check(...)` | **Machine check**: each machine's running rim against the WIP, with suggested changeovers |
 
 Load in file order. `01_indexes.sql` uses `CREATE INDEX CONCURRENTLY`, so run it outside a transaction.
 
@@ -111,6 +113,7 @@ Load in file order. `01_indexes.sql` uses `CREATE INDEX CONCURRENTLY`, so run it
 -- WIP (last 2 days, not yet at DBM). Replace {1} with your WIP state codes (NULL = all records).
 SELECT * FROM master.fn_wip_rim_readiness(p_wip_states => '{1}');
 SELECT * FROM master.fn_wip_rim_demand(p_wip_states => '{1}');
+SELECT * FROM master.fn_machine_rim_check(p_wip_states => '{1}');   -- running rim per machine vs WIP
 
 -- Custom window, OK quality codes only, one area
 SELECT * FROM master.fn_wip_rim_readiness(
@@ -124,6 +127,27 @@ SELECT * FROM master.fn_rim_master_data_gaps() WHERE severity = 'ERROR';
 SELECT * FROM master.fn_validate_tire_barcode('T0001', 502);  -- check for one equipment
 SELECT * FROM master.fn_validate_tire_barcode('T0001');       -- list eligible equipment
 ```
+
+### Machine check (running rim vs WIP)
+
+For every machine of the area (DBM by default): the machines running a rim of that area, plus DBM
+machines seen in `dbm.o_production` with no running rim.
+
+| Status | Meaning |
+|---|---|
+| `OK` | Rim active and WIP tires fit it |
+| `INFO_NO_WIP` | Rim active but no WIP tire fits: idle |
+| `INFO_NOT_AVAILABLE` | Running `None` |
+| `NG_NO_RUNNING_RIM` | DBM machine with no running rim |
+| `NG_RIM_INACTIVE` | Running rim is inactive in `rim_master` |
+| `NG_CHANGEOVER_NEEDED` | Idle while WIP tires are blocked; a changeover is suggested |
+| `WARN_CHANGEOVER_SUGGESTED` | Has WIP, but a changeover would unblock more tires than it blocks |
+
+A suggestion picks the active rim of the area that **unblocks** the most WIP tires (tires with an active
+rim but no eligible machine), minus the tires it would **block** (tires that can only go to this machine).
+It is made only when that net gain is positive. Only one machine is suggested per rim: machines with no rim
+or an inactive rim come first, then the machine with the fewest WIP tires that fit. Validate again after
+each changeover.
 
 ### Status codes
 

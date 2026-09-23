@@ -296,6 +296,10 @@ function fixActions(table, row, i) {
     return `<span class="hint" title="Fix this in the source system">—</span>`;
   }
   if (table === "running") return btn("Set rim…", "");
+  if (table === "machines") {
+    const apply = row.suggested_rim ? btn(`Apply → ${row.suggested_rim}`, "primary", `data-apply="1"`) + " " : "";
+    return row.status === "INFO_NOT_AVAILABLE" && !apply ? btn("Set rim…", "") : apply + btn("Set rim…", "");
+  }
   return "";
 }
 
@@ -303,6 +307,13 @@ function onFix(table, row, el) {
   if (table === "recipes") return materialDialog(row.material_id, row);
   if (table === "rims") return el.dataset.material ? materialDialog(+el.dataset.material) : rimDialog(row.rim_size);
   if (table === "running") return equipmentDialog(row.equipment_id);
+  if (table === "machines") {
+    if (el.dataset.apply) {
+      return loadLookups().then(() => write("PUT", `/api/fix/running/${row.equipment_id}`, { rim_id: row.suggested_rim_id },
+        `Change machine ${row.equipment_id} to rim ${row.suggested_rim}?`, changeoverImpact(row.equipment_id, row.suggested_rim)));
+    }
+    return equipmentDialog(row.equipment_id);
+  }
   if (table === "gaps") {
     const f = row.fix_ref || {};
     if (MATERIAL_CHECKS.includes(row.check_code)) return materialDialog(f.material_id, { status: row.check_code, message: row.detail });
