@@ -32,6 +32,7 @@ export default function App() {
   const [results, setResults] = useState(null);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState("");
+  const [areaError, setAreaError] = useState("");
   const [running, setRunning] = useState(null);
   const [lookups, setLookups] = useState({ rims: [], running: [] });
   const [version, setVersion] = useState(0);
@@ -91,7 +92,7 @@ export default function App() {
       setAreas(a);
       const def = a.find((x) => x.is_default);
       setFilters((f) => ({ ...f, areaId: def ? String(def.local_area_id) : "" }));
-    }).catch(() => setAreas([]));
+    }).catch((e) => { setAreas([]); setAreaError(`Could not load the machine areas (${e.message}); validating for DBM.`); });
   }, []);
 
   // area changed (or loaded): reload running sizes and lookups, re-validate
@@ -126,14 +127,17 @@ export default function App() {
     }
   }, [showToast, validate, loadRunning, loadLookups]);
 
-  const areaId = filters.areaId;
+  // no area selected -> DBM (its id from the rim list), the same default the API uses
+  const dbmFromRims = lookups.rims.find((r) => /^DBM\b/i.test(r.area_name || ""))?.local_area_id;
+  const areaId = filters.areaId || (dbmFromRims != null ? String(dbmFromRims) : "");
   const area = (areas || []).find((a) => String(a.local_area_id) === areaId);
   const inArea = useCallback((r) => !areaId || String(r.local_area_id) === areaId, [areaId]);
   const activeRims = useMemo(() => lookups.rims.filter((r) => r.isactive && inArea(r)), [lookups.rims, inArea]);
 
   const ctx = {
-    config, filters, areaName: area ? `${area.name} (area ${area.local_area_id})` : "all areas",
-    isDbmArea: /^DBM\b/i.test(area?.name || ""),
+    // no area selected (area list empty or not loaded): the API validates for DBM, so the page does too
+    config, filters: { ...filters, areaId }, areaName: area ? `${area.name} (area ${area.local_area_id})` : "DBM",
+    isDbmArea: area ? /^DBM\b/i.test(area.name) : true,
     hoursLabel: HOURS.find(([v]) => v === filters.hours)?.[1] || "look-back",
     results, lookups, version, activeRims,
     rimFor: (key, { activeOnly = true } = {}) =>
@@ -215,7 +219,7 @@ export default function App() {
             <select value={filters.areaId} onChange={(e) => setFilter("areaId", e.target.value)}
               title="Rims and mappings are defined per area (machine type). WIP to DBM uses the DBM area.">
               {areas && areas.length ? areas.map((a) => <option key={a.local_area_id} value={String(a.local_area_id)}>{a.name} (area {a.local_area_id})</option>)
-                : <option value="">All areas</option>}
+                : <option value="">DBM (default)</option>}
             </select>
           </label>
           <label className="check">
@@ -227,6 +231,7 @@ export default function App() {
 
         <Summary results={results} />
         {error && <div className="error" role="alert">{error}</div>}
+        {areaError && <div className="error" role="alert">{areaError}</div>}
 
         <nav className="tabs" role="tablist">
           {TABS.map(([k, l]) => (
