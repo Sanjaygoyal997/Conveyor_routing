@@ -14,6 +14,7 @@ namespace ConveyorRouting.Api.Interfaces.IServices
         OEMResponse RunningSizes(int? areaId, int hours);
         OEMResponse DbmMachines(int days);
         OEMResponse Rims();
+        OEMResponse Equipment();
         OEMResponse MaterialMapping(int materialId);
         OEMResponse Audit(int limit);
         OEMResponse Barcode(string barcode, int? equipmentId, int? areaId, string okQuality);

@@ -50,6 +50,10 @@ namespace ConveyorRouting.Api.Controllers
         [HttpGet("rims")]
         public IActionResult Rims() => Reply(_service.Rims());
 
+        /// <summary>master.equipment_master: machine id (local_equipment_id), name and area.</summary>
+        [HttpGet("equipment")]
+        public IActionResult Equipment() => Reply(_service.Equipment());
+
         [HttpGet("material/{material_id:int}")]
         public IActionResult Material(int material_id) => Reply(_service.MaterialMapping(material_id));
 

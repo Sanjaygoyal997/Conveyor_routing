@@ -84,3 +84,11 @@ INSERT INTO dbm.o_production (equipment_id, dtandtime, barcode, total_rank) VALU
     (501, now() - interval '30 minutes', 'T0002', 'A'),
     (506, now() - interval '20 minutes', 'X9999', 'B'),
     (510, now() - interval '10 minutes', 'X9998', 'A');
+
+-- Equipment master: DBMs 501-509 (507 idle, no rim, never balanced), 511 inactive, TUO 601.
+-- 510 balances at DBM but is missing here -> DBM_EQUIPMENT_NOT_IN_MASTER.
+INSERT INTO master.equipment_master (name, description, local_equipment_id, local_area_id, plant_id, is_active) VALUES
+    ('DBM-01', 'DBM 1', 501, 12, 1, 1), ('DBM-02', 'DBM 2', 502, 12, 1, 1), ('DBM-03', 'DBM 3', 503, 12, 1, 1),
+    ('DBM-04', 'DBM 4', 504, 12, 1, 1), ('DBM-05', 'DBM 5', 505, 12, 1, 1), ('DBM-06', 'DBM 6', 506, 12, 1, 1),
+    ('DBM-07', 'DBM 7', 507, 12, 1, 1), ('DBM-08', 'DBM 8', 508, 12, 1, 1), ('DBM-09', 'DBM 9', 509, 12, 1, NULL),
+    ('DBM-11', 'Scrapped', 511, 12, 1, 0), ('TUO-01', 'TUO 1', 601, 11, 1, 1);

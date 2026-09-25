@@ -24,7 +24,7 @@ const RimOptions = ({ rims }) => rims.map((r) => <option key={r.rim_id} value={r
 
 // ---- DBM rim ----------------------------------------------------------------------
 function MachineCard() {
-  const { results, lookups, isDbmArea, version, activeRims, rimLabel, config, write, impact, qfSel, setQfSel } = useApp();
+  const { results, lookups, isDbmArea, version, activeRims, rimLabel, config, write, impact, qfSel, setQfSel, eqLabel } = useApp();
   const [dbms, setDbms] = useState([]);
   const [rimSel, setRimSel] = useState("");
   const checks = results.machines;
@@ -39,7 +39,7 @@ function MachineCard() {
   // DBM area: every DBM machine (even without a rim); other areas: the machine-check rows
   const list = useMemo(() => (isDbmArea
     ? dbms.map((d) => ({ equipment_id: d.equipment_id, running_rim: d.rim_name, rim_status: d.rim_status,
-      last_balanced: d.last_balanced, tires_balanced: d.tires_balanced }))
+      last_balanced: d.last_balanced, tires_balanced: d.tires_balanced, in_master: d.in_master, master_area: d.master_area }))
     : checks.map((m) => ({ equipment_id: m.equipment_id, running_rim: m.running_rim, rim_status: m.rim_status }))), [isDbmArea, dbms, checks]);
 
   // selected machine: keep it while it exists, else the first one with an issue
@@ -74,7 +74,7 @@ function MachineCard() {
   const save = async () => {
     if (!validId || !newRim) return;
     const ok = await write("PUT", `/api/fix/running/${id}`, { rim_id: newRim.rim_id },
-      `Map rim ${newRim.name} to ${label.toLowerCase()} ${id}?`, impact(id, newRim.name));
+      `Map rim ${newRim.name} to ${eqLabel(id, label)}?`, impact(id, newRim.name));
     if (ok && eq === "__other") setQfSel((s) => ({ ...s, eq: id, eqOther: "" }));
   };
 
@@ -90,12 +90,12 @@ function MachineCard() {
         {sugg.length ? <>Suggested: {sugg.map((x) => (
           <button key={x.equipment_id} className="sm fixbtn"
             onClick={() => setQfSel((s) => ({ ...s, eq: String(x.equipment_id), wantRim: String(x.suggested_rim_id) }))}>
-            {x.equipment_id} → {x.suggested_rim} (keeps {x.unblocks_tires} off exit)</button>))}</>
+            {eqLabel(x.equipment_id, label)} → {x.suggested_rim} (keeps {x.unblocks_tires} off exit)</button>))}</>
           : <span className="hint">No changeover needed for the current WIP.</span>}
       </div>
       <label className="qf-field">1. Select DBM
         <select value={eq} onChange={(e) => pickEq(e.target.value)}>
-          {list.map((x) => <option key={x.equipment_id} value={String(x.equipment_id)}>{label} {x.equipment_id}</option>)}
+          {list.map((x) => <option key={x.equipment_id} value={String(x.equipment_id)}>{eqLabel(x.equipment_id, label)}</option>)}
           <option value="__other">Other {label}…</option>
         </select>
       </label>
@@ -106,6 +106,8 @@ function MachineCard() {
         </label>
       )}
       <div>
+        {m && m.in_master === false && <p className="hint">Not listed as a DBM in equipment_master
+          {m.master_area ? ` (registered there as ${m.master_area})` : ""}.</p>}
         {!id ? <p className="hint">Enter the DBM number.</p>
           : chk ? <p><Pill status={chk.status} /> {chk.message}</p>
           : m ? <p><Pill status={m.rim_status} /> Running {m.running_rim ?? "no rim"}.
@@ -137,7 +139,7 @@ function MachineCard() {
                   if (list.some((l) => String(l.equipment_id) === v)) pickEq(v);
                   else setQfSel((s) => ({ ...s, eq: "__other", eqOther: v }));
                 }}>
-                  <td>{label} {x.equipment_id}{x.isNew ? " (new)" : ""}</td>
+                  <td>{eqLabel(x.equipment_id, label)}{x.isNew ? " (new)" : ""}</td>
                   <td className="m">{changing ? <>{curName} → <b>{newRim.name}</b></> : curName}</td>
                   <td><Pill status={c ? c.status : x.rim_status} /></td>
                   <td className="num">{c ? c.wip_tires_fit : ""}</td>

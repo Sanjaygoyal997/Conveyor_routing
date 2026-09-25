@@ -10,7 +10,7 @@ const reactivateDetail = "Sets rim_master.isactive = true. It affects every mate
 
 // ---- material: mapped rims, add rim, change over a DBM ---------------------------
 export function MaterialDialog({ materialId, context = {} }) {
-  const { version, filters, areaName, lookups, results, activeRims, rimFor, config, write, impact } = useApp();
+  const { version, filters, areaName, lookups, results, activeRims, rimFor, config, write, impact, eqLabel } = useApp();
   const [maps, setMaps] = useState(null);
   const [err, setErr] = useState("");
   const [areaInputs, setAreaInputs] = useState({});
@@ -66,7 +66,7 @@ export function MaterialDialog({ materialId, context = {} }) {
   const doChangeover = () => {
     const rim = lookups.rims.find((r) => String(r.rim_id) === coRimSel);
     if (!coEqSel || !rim) return;
-    write("PUT", `/api/fix/running/${coEqSel}`, { rim_id: rim.rim_id }, `Change equipment ${coEqSel} to rim ${rim.name}?`, impact(coEqSel, rim.name));
+    write("PUT", `/api/fix/running/${coEqSel}`, { rim_id: rim.rim_id }, `Change ${eqLabel(coEqSel)} to rim ${rim.name}?`, impact(coEqSel, rim.name));
   };
 
   return (
@@ -115,7 +115,7 @@ export function MaterialDialog({ materialId, context = {} }) {
       {usable.length ? (
         <div className="form-row">
           <select aria-label="Equipment" value={coEqSel} onChange={(e) => setCoEq(e.target.value)}>
-            {eqs.map((e) => <option key={e.equipment_id} value={e.equipment_id}>{e.equipment_id}</option>)}
+            {eqs.map((e) => <option key={e.equipment_id} value={e.equipment_id}>{eqLabel(e.equipment_id)}</option>)}
           </select>
           <span>→</span>
           <select aria-label="Rim" value={coRimSel} onChange={(e) => setCoRim(e.target.value)}><RimOptions rims={usable} /></select>
@@ -128,7 +128,7 @@ export function MaterialDialog({ materialId, context = {} }) {
 
 // ---- equipment: set running rim ---------------------------------------------------
 export function EquipmentDialog({ equipmentId }) {
-  const { lookups, results, activeRims, config, write, impact } = useApp();
+  const { lookups, results, activeRims, config, write, impact, eqLabel } = useApp();
   const e = lookups.running.find((x) => String(x.equipment_id) === String(equipmentId));
   const cur = e?.rim_name ?? null;
   const d = cur && (results?.rims || []).find((x) => x.rim_size === cur);
@@ -138,7 +138,7 @@ export function EquipmentDialog({ equipmentId }) {
   const save = () => {
     const rim = lookups.rims.find((r) => String(r.rim_id) === value);
     if (!rim) return;
-    write("PUT", `/api/fix/running/${equipmentId}`, { rim_id: rim.rim_id }, `Set equipment ${equipmentId} to rim ${rim.name}?`,
+    write("PUT", `/api/fix/running/${equipmentId}`, { rim_id: rim.rim_id }, `Set ${eqLabel(equipmentId)} to rim ${rim.name}?`,
       impact(equipmentId, rim.name));
   };
   return (
@@ -157,7 +157,7 @@ export function EquipmentDialog({ equipmentId }) {
 
 // ---- rim: who runs it, change over equipment to it ------------------------------------
 export function RimDialog({ rimKey }) {
-  const { lookups, results, rimFor, config, write, impact, openDialog } = useApp();
+  const { lookups, results, rimFor, config, write, impact, openDialog, eqLabel } = useApp();
   const rim = rimFor(rimKey), anyRim = rimFor(rimKey, { activeOnly: false });
   const d = (results?.rims || []).find((x) => x.rim_size === rimKey);
   const runningOn = lookups.running.filter((e) => e.rim_name === rimKey);
@@ -181,16 +181,16 @@ export function RimDialog({ rimKey }) {
       {runningOn.length
         ? <div className="chips">{runningOn.map((e) =>
           <button key={e.equipment_id} className="sm" onClick={() => openDialog({ kind: "equipment", equipmentId: e.equipment_id })}>
-            Equipment {e.equipment_id}</button>)}</div>
+            {eqLabel(e.equipment_id)}</button>)}</div>
         : <p className="empty">No equipment is running this rim.</p>}
       {rim && <>
         <h4>Change over equipment to rim {rim.name}</h4>
         <div className="form-row">
           <select aria-label="Equipment" value={eqSel} onChange={(e) => setEq(e.target.value)}>
-            {others.map((e) => <option key={e.equipment_id} value={e.equipment_id}>{e.equipment_id}</option>)}
+            {others.map((e) => <option key={e.equipment_id} value={e.equipment_id}>{eqLabel(e.equipment_id)}</option>)}
           </select>
           <button className="primary" disabled={dis || !eqSel}
-            onClick={() => write("PUT", `/api/fix/running/${eqSel}`, { rim_id: rim.rim_id }, `Change equipment ${eqSel} to rim ${rimKey}?`,
+            onClick={() => write("PUT", `/api/fix/running/${eqSel}`, { rim_id: rim.rim_id }, `Change ${eqLabel(eqSel)} to rim ${rimKey}?`,
               impact(eqSel, rimKey))}>Change over</button>
         </div>
       </>}

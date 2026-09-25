@@ -173,14 +173,23 @@ try:
     check("API: material 101 still routable on R20225", status_of(101), "OK")
 
     # -- DBM machine list for "pick DBM, then rim": DBM rims + balanced at DBM (incl. no rim / wrong-area rim)
-    dbms = {m["equipment_id"]: m["rim_status"] for m in c.get("/api/dbm-machines").json()}
-    check("API: DBM list = DBM-rim machines + machines seen at DBM, no TUO machine",
-          sorted(dbms), [501, 502, 503, 504, 505, 506, 508, 509, 510])
-    check("API: DBM list statuses", (dbms[506], dbms[509], dbms[510]), ("NOT SET", "NOT AVAILABLE", "WRONG AREA"))
+    dbm_rows = {m["equipment_id"]: m for m in c.get("/api/dbm-machines").json()}
+    dbms = {k: m["rim_status"] for k, m in dbm_rows.items()}
+    check("API: DBM list = equipment_master DBMs (507 idle, 511 inactive left out) + DBM-rim / balancing machines, no TUO",
+          sorted(dbms), [501, 502, 503, 504, 505, 506, 507, 508, 509, 510])
+    check("API: DBM list statuses", (dbms[506], dbms[507], dbms[509], dbms[510]), ("NOT SET", "NOT SET", "NOT AVAILABLE", "WRONG AREA"))
+    check("API: DBM list names from equipment_master",
+          (dbm_rows[501]["equipment_name"], dbm_rows[510]["equipment_name"], dbm_rows[510]["in_master"]), ("DBM-01", None, False))
+    eqs = {e["equipment_id"]: e for e in c.get("/api/equipment").json()}
+    check("API: equipment names and areas", (eqs[601]["name"], eqs[601]["area_name"], eqs[511]["is_active"]), ("TUO-01", "TUO", False))
+    r = c.put("/api/fix/running/601", json={"rim_id": 1}, headers=H)
+    check("API: DBM rim on a TUO machine (equipment_master) -> 409", (r.status_code, "TUO machine" in r.body["message"]), (409, True))
+    r = c.put("/api/fix/running/507", json={"rim_id": 1}, headers=H)
+    check("API: rim on idle DBM 507 from equipment_master", r.json()["message"], "Equipment 507 (DBM-07) now running rim R20225")
 
     # -- machine check: after 504 went to R225245 nothing is blocked any more -> no suggestions
     machines = {m["equipment_id"]: m for m in c.get("/api/wip/machines", params={"wip_states": "1"}).json()}
-    check("API: machine check lists DBM machines only", sorted(machines), [501, 502, 503, 504, 505, 506, 508, 509])
+    check("API: machine check lists DBM machines only", sorted(machines), [501, 502, 503, 504, 505, 506, 507, 508, 509])
     check("API: 504 now fits the R225245 tires", (machines[504]["running_rim"], machines[504]["status"]), ("R225245", "OK"))
 
     # -- DBM_NO_RUNNING_SIZE: equipment 506 appears as NOT SET, then gets a rim
@@ -226,7 +235,7 @@ try:
     # -- audit trail
     log = c.get("/api/audit").json()
     check("API: every write audited", [a["action"] for a in reversed(log)],
-          ["map_rim", "set_running_rim", "set_running_rim", "set_running_rim", "set_running_rim",
+          ["map_rim", "set_running_rim", "set_running_rim", "set_running_rim", "set_running_rim", "set_running_rim",
            "activate_rim", "dedupe", "set_area", "change_rim", "unmap_rim"])
     e504 = next(a for a in log if a["row_ref"] == "equipment_id=504")
     check("API: audit keeps before/after", (e504["before"]["rim_size"], e504["after"]["rim_size"]), ("2", "8"))

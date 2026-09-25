@@ -23,6 +23,7 @@ export const TABLES = {
     columns: [
       { key: "status", label: "Status", pill: true },
       { key: "equipment_id", label: "Machine", num: true },
+      { key: "equipment_name", label: "Name" },
       { key: "running_rim", label: "Running rim" },
       { key: "rim_status", label: "Rim", pill: true },
       { key: "wip_tires_fit", label: "WIP tires fit", num: true },
@@ -62,6 +63,7 @@ export const TABLES = {
     statusKey: "rim_master_status",
     columns: [
       { key: "equipment_id", label: "Equipment", num: true },
+      { key: "equipment_name", label: "Name" },
       { key: "rim_name", label: "Running rim" },
       { key: "rim_size", label: "rim_id" },
       { key: "rim_area", label: "Rim area" },
@@ -82,7 +84,7 @@ const Btn = ({ primary, onClick, children }) => (
 
 // ctx: the AppContext value
 export function rowActions(table, row, ctx) {
-  const { openQuickFix, openDialog, write, impact } = ctx;
+  const { openQuickFix, openDialog, write, impact, eqLabel } = ctx;
   switch (table) {
     case "recipes":
       return <Btn primary={row.status !== "OK"} onClick={() => openQuickFix({ recipe: String(row.material_id) })}>
@@ -119,7 +121,7 @@ export function rowActions(table, row, ctx) {
     case "machines":
       return <>
         {row.suggested_rim && <><Btn primary onClick={() => write("PUT", `/api/fix/running/${row.equipment_id}`,
-          { rim_id: row.suggested_rim_id }, `Change machine ${row.equipment_id} to rim ${row.suggested_rim}?`,
+          { rim_id: row.suggested_rim_id }, `Change ${eqLabel(row.equipment_id, "machine")} to rim ${row.suggested_rim}?`,
           impact(row.equipment_id, row.suggested_rim))}>Apply → {row.suggested_rim}</Btn>{" "}</>}
         <Btn onClick={() => openQuickFix({ eq: row.equipment_id })}>Set rim…</Btn>
       </>;

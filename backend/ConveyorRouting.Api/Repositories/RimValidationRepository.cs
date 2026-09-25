@@ -62,8 +62,15 @@ namespace ConveyorRouting.Api.Repositories
                         ORDER  BY 1",
                 Sql.Int("area_id", areaId), Sql.Int("hours", hours));
 
+        // DBM machines = equipment_master rows of the DBM area (joined on local_equipment_id), plus machines
+        // running a DBM rim or balancing at DBM that are missing there (flagged via in_master / master_area).
         public List<Dictionary<string, object>> DbmMachines(int days) =>
-            _db.Query(@"WITH seen AS (
+            _db.Query(@"WITH dbm_area AS (SELECT master.fn_area_id('DBM') AS id),
+                        master_dbm AS (
+                            SELECT e.local_equipment_id AS equipment_id
+                            FROM   master.equipment_master e, dbm_area
+                            WHERE  e.local_area_id = dbm_area.id AND COALESCE(e.is_active, 1) <> 0),
+                        seen AS (
                             SELECT d.equipment_id, max(d.dtandtime) AS last_balanced, count(*) AS tires_balanced
                             FROM   dbm.o_production d
                             WHERE  d.dtandtime >= (now() - make_interval(days => @days))::timestamp
@@ -72,23 +79,38 @@ namespace ConveyorRouting.Api.Repositories
                         run AS (
                             SELECT r.equipment_id, r.rim_size, master.fn_rim_name(r.rim_size) AS rim_name,
                                    master.fn_rim_area(r.rim_size) AS rim_area
-                            FROM   master.runningsize_lookup r)
-                        SELECT COALESCE(r.equipment_id, s.equipment_id) AS equipment_id,
+                            FROM   master.runningsize_lookup r),
+                        ids AS (
+                            SELECT equipment_id FROM master_dbm
+                            UNION SELECT equipment_id FROM seen
+                            UNION SELECT r.equipment_id FROM run r, dbm_area
+                                  WHERE r.rim_area IS NULL OR r.rim_area = dbm_area.id)
+                        SELECT i.equipment_id,
+                               e.name AS equipment_name,
+                               e.local_equipment_id IS NOT NULL AS in_master,
+                               (SELECT a.name FROM master.area_master a WHERE a.local_area_id = e.local_area_id) AS master_area,
                                r.rim_size, r.rim_name,
                                CASE WHEN r.rim_name IS NULL          THEN 'NOT SET'
                                     WHEN r.rim_name = 'NONE'         THEN 'NOT AVAILABLE'
                                     WHEN r.rim_name = 'UNIVERSALRIM' THEN 'UNIVERSAL'
-                                    WHEN r.rim_area IS DISTINCT FROM master.fn_area_id('DBM') AND r.rim_area IS NOT NULL
+                                    WHEN r.rim_area IS DISTINCT FROM (SELECT id FROM dbm_area) AND r.rim_area IS NOT NULL
                                                                      THEN 'WRONG AREA'
                                     ELSE master.fn_rim_status(r.rim_size) END AS rim_status,
                                s.last_balanced, COALESCE(s.tires_balanced, 0) AS tires_balanced
-                        FROM   run r
-                        FULL   JOIN seen s ON s.equipment_id = r.equipment_id
-                        WHERE  s.equipment_id IS NOT NULL
-                           OR  r.rim_area IS NULL
-                           OR  r.rim_area = master.fn_area_id('DBM')
-                        ORDER  BY 1",
+                        FROM   ids i
+                        LEFT   JOIN master.equipment_master e ON e.local_equipment_id = i.equipment_id
+                        LEFT   JOIN run  r ON r.equipment_id = i.equipment_id
+                        LEFT   JOIN seen s ON s.equipment_id = i.equipment_id
+                        ORDER  BY i.equipment_id",
                 Sql.Int("days", days));
+
+        // Every machine with its name and area (names shown in the UI)
+        public List<Dictionary<string, object>> Equipment() =>
+            _db.Query(@"SELECT e.local_equipment_id AS equipment_id, e.name, e.description, e.local_area_id,
+                               (SELECT a.name FROM master.area_master a WHERE a.local_area_id = e.local_area_id) AS area_name,
+                               COALESCE(e.is_active, 1) <> 0 AS is_active
+                        FROM   master.equipment_master e
+                        ORDER  BY e.local_equipment_id");
 
         public List<Dictionary<string, object>> Rims() =>
             _db.Query(@"SELECT rim_id, name, master.fn_rim_key(name) AS rim_key, isactive, local_area_id, description,

@@ -62,6 +62,7 @@ namespace ConveyorRouting.Api.Services
         });
 
         public OEMResponse Rims() => Run(() => _repo.Rims());
+        public OEMResponse Equipment() => Run(() => _repo.Equipment());
         public OEMResponse MaterialMapping(int materialId) => Run(() => _repo.MaterialMapping(materialId));
 
         public OEMResponse Audit(int limit) => Run(() =>

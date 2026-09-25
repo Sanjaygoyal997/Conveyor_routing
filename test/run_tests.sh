@@ -57,7 +57,7 @@ check "WIP rim demand vs running equipment (None left out)" \
 
 check "Master data gap codes" \
   "SELECT string_agg(DISTINCT check_code, ' ') FROM master.fn_rim_master_data_gaps()" \
-  "DBM_NO_RUNNING_SIZE FORMAT_DRIFT MSL_DUPLICATE_ROW MSL_MATERIAL_NOT_RUNNABLE MSL_NONE_RIM MSL_NULL_AREA MSL_RIM_INACTIVE MSL_RIM_INVALID MSL_RIM_WRONG_AREA MSL_SIZE_NOT_RUNNING PROD_DUPLICATE_BARCODE PROD_MATERIAL_NO_SIZE RUN_RIM_INACTIVE RUN_RIM_WRONG_AREA"
+  "DBM_EQUIPMENT_NOT_IN_MASTER DBM_NO_RUNNING_SIZE FORMAT_DRIFT MSL_DUPLICATE_ROW MSL_MATERIAL_NOT_RUNNABLE MSL_NONE_RIM MSL_NULL_AREA MSL_RIM_INACTIVE MSL_RIM_INVALID MSL_RIM_WRONG_AREA MSL_SIZE_NOT_RUNNING PROD_DUPLICATE_BARCODE PROD_MATERIAL_NO_SIZE RUN_RIM_INACTIVE RUN_RIM_WRONG_AREA"
 
 check "Wrong-area findings" \
   "SELECT string_agg(check_code || ':' || entity_ref, ' ' ORDER BY check_code) FROM master.fn_rim_master_data_gaps() WHERE check_code LIKE '%WRONG_AREA'" \
@@ -103,6 +103,10 @@ check "Quality hold" \
   "SELECT status FROM master.fn_validate_tire_barcode('T0009', 501, NULL, '{1}')" "NG_QUALITY_HOLD"
 
 M="master.fn_machine_rim_check(p_wip_states => '{1}')"
+check "Equipment balancing at DBM that equipment_master does not list as DBM" \
+  "SELECT string_agg(entity_ref, ' ') FROM master.fn_rim_master_data_gaps() WHERE check_code = 'DBM_EQUIPMENT_NOT_IN_MASTER'" \
+  "equipment_id=510"
+
 check "Machine check: running rim per DBM machine vs WIP" \
   "SELECT string_agg(equipment_id || ':' || status || COALESCE(':' || suggested_rim || ':+' || unblocks_tires, ''), ' ' ORDER BY equipment_id) FROM $M" \
   "501:OK 502:OK 503:OK 504:OK 505:INFO_NO_WIP 506:NG_NO_RUNNING_RIM:R225245:+1 508:NG_RIM_INACTIVE 509:INFO_NOT_AVAILABLE"

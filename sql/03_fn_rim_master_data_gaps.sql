@@ -204,6 +204,20 @@ findings AS (
       AND  d.equipment_id IS NOT NULL
       AND  NOT EXISTS (SELECT 1 FROM run r WHERE r.equipment_id = d.equipment_id AND r.rim_key IS NOT NULL)
     GROUP  BY d.equipment_id
+
+    -- equipment balancing at DBM that equipment_master does not list as a DBM (local_equipment_id, DBM area)
+    UNION ALL
+    SELECT 'WARN', 'DBM_EQUIPMENT_NOT_IN_MASTER', 'equipment_master', 'equipment_id=' || d.equipment_id,
+           'Equipment ' || d.equipment_id || ' balanced ' || count(*) || ' tire(s) at DBM in the window but is '
+           || COALESCE('registered in equipment_master as "' || max(e.name) || '" of area ' || max(e.local_area_id),
+                       'not in equipment_master'),
+           jsonb_build_object('equipment_id', d.equipment_id)
+    FROM   dbm.o_production d
+    LEFT   JOIN master.equipment_master e ON e.local_equipment_id = d.equipment_id
+    WHERE  d.dtandtime >= p_from AND d.dtandtime < p_to
+      AND  d.equipment_id IS NOT NULL
+      AND  e.local_area_id IS DISTINCT FROM master.fn_area_id('DBM')
+    GROUP  BY d.equipment_id
 )
 SELECT * FROM findings f(severity, check_code, entity, entity_ref, detail, fix_ref)
 ORDER  BY CASE f.severity WHEN 'ERROR' THEN 1 WHEN 'WARN' THEN 2 ELSE 3 END,

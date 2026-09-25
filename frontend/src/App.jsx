@@ -34,7 +34,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [areaError, setAreaError] = useState("");
   const [running, setRunning] = useState(null);
-  const [lookups, setLookups] = useState({ rims: [], running: [] });
+  const [lookups, setLookups] = useState({ rims: [], running: [], equipment: [] });
   const [version, setVersion] = useState(0);
   const [tab, setTab] = useState("quick");
   const [dialog, setDialog] = useState(null);
@@ -80,8 +80,9 @@ export default function App() {
   }, []);
 
   const loadLookups = useCallback(async () => {
-    const [rims, run] = await Promise.all([api("/api/rims"), api("/api/running-sizes", { hours: live.current.filters.hours })]);
-    setLookups({ rims, running: run });
+    const [rims, run, equipment] = await Promise.all([api("/api/rims"), api("/api/running-sizes", { hours: live.current.filters.hours }),
+      api("/api/equipment").catch(() => [])]);
+    setLookups({ rims, running: run, equipment });
   }, []);
 
   // startup: health, config, areas (DBM is the default), then validate
@@ -134,6 +135,12 @@ export default function App() {
   const inArea = useCallback((r) => !areaId || String(r.local_area_id) === areaId, [areaId]);
   const activeRims = useMemo(() => lookups.rims.filter((r) => r.isactive && inArea(r)), [lookups.rims, inArea]);
 
+  // machine names from master.equipment_master (local_equipment_id = equipment_id)
+  const eqNames = useMemo(() => new Map(lookups.equipment.map((e) => [e.equipment_id, e.name])), [lookups.equipment]);
+  const eqName = (id) => eqNames.get(Number(id)) ?? null;
+  const eqLabel = (id, prefix = "Equipment") => (eqName(id) ? `${eqName(id)} (${id})` : `${prefix} ${id}`);
+  const withNames = (rows) => rows && rows.map((r) => (r.equipment_id != null ? { ...r, equipment_name: eqName(r.equipment_id) } : r));
+
   const ctx = {
     // no area selected (area list empty or not loaded): the API validates for DBM, so the page does too
     config, filters: { ...filters, areaId }, areaName: area ? `${area.name} (area ${area.local_area_id})` : "DBM",
@@ -150,7 +157,7 @@ export default function App() {
       setQfSel((s) => ({ ...s, ...(recipe ? { recipe } : {}), ...(eq != null ? { eq: String(eq) } : {}) }));
       setTab("quick");
     },
-    qfSel, setQfSel,
+    qfSel, setQfSel, eqName, eqLabel,
   };
 
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
@@ -167,14 +174,14 @@ export default function App() {
   const table = (name, extra = {}) => {
     const def = TABLES[name];
     return (
-      <DataTable key={name} name={name} rows={name === "running" ? running : results?.[name]} columns={def.columns}
+      <DataTable key={name} name={name} rows={withNames(name === "running" ? running : results?.[name])} columns={def.columns}
         statusKey={def.statusKey} issueFilter={def.issueFilter} issuesLabel={def.issuesLabel} placeholder={def.placeholder}
         emptyText={EMPTY[name]} actions={(row) => rowActions(name, row, ctx)} {...extra} />
     );
   };
 
   const dialogTitle = dialog && (dialog.kind === "material" ? `Material ${dialog.materialId}`
-    : dialog.kind === "equipment" ? `Equipment ${dialog.equipmentId}` : `Rim ${dialog.rimKey}`);
+    : dialog.kind === "equipment" ? eqLabel(dialog.equipmentId) : `Rim ${dialog.rimKey}`);
 
   return (
     <AppContext.Provider value={ctx}>

@@ -42,3 +42,10 @@ CREATE TABLE master.area_master (
     id serial, name varchar(50) NOT NULL, description varchar(100),
     local_area_id int PRIMARY KEY, continuous int DEFAULT 0, plant_id int NOT NULL,
     local_bu_id int NOT NULL, slug varchar(100), created_by varchar, dtandtime time);
+
+-- master.equipment_master (plant columns trimmed); local_equipment_id = equipment_id elsewhere
+CREATE TABLE master.equipment_master (
+    id serial, name varchar(50) NOT NULL, description varchar(100),
+    local_equipment_id int NOT NULL UNIQUE, local_area_id int NOT NULL, plant_id int NOT NULL,
+    type_id int, is_active int, sap_code varchar,
+    PRIMARY KEY (local_equipment_id, plant_id));
