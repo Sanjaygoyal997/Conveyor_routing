@@ -4,19 +4,21 @@ import { downloadCsv, fmt, isIssue } from "../util.js";
 
 // Sortable, filterable table with CSV export. columns: {key, label, num?, pill?}; actions(row) renders the last cell.
 export default function DataTable({
-  name, rows, columns, statusKey = "status", issueFilter, actions, toolbarExtra,
+  name, rows, columns, statusKey = "status", issueFilter, actions, toolbarExtra, rimLabel = (k) => k,
   emptyText, issuesLabel = "Issues only", showIssues = true, placeholder = "Filter…",
 }) {
   const [q, setQ] = useState("");
   const [issuesOnly, setIssuesOnly] = useState(false);
   const [sort, setSort] = useState({ key: null, dir: "asc" });
+  // rim columns hold the stored rim key (e.g. UNIVERSALRIM); show the rim_master name instead
+  const show = (c, v) => (c.rim && v != null ? (Array.isArray(v) ? v.map(rimLabel) : rimLabel(v)) : v);
 
   const visible = useMemo(() => {
     if (!rows) return [];
     const query = q.trim().toLowerCase();
     let out = rows.filter((r) => {
       if (showIssues && issuesOnly && !(issueFilter ? issueFilter(r) : isIssue(r[statusKey]))) return false;
-      return !query || columns.some((c) => fmt(r[c.key]).toLowerCase().includes(query));
+      return !query || columns.some((c) => fmt(show(c, r[c.key])).toLowerCase().includes(query));
     });
     if (sort.key) {
       const k = sort.key, d = sort.dir === "desc" ? -1 : 1;
@@ -29,7 +31,7 @@ export default function DataTable({
       });
     }
     return out;
-  }, [rows, q, issuesOnly, sort, columns, statusKey, issueFilter, showIssues]);
+  }, [rows, q, issuesOnly, sort, columns, statusKey, issueFilter, showIssues, rimLabel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sortBy = (key) => setSort((s) => ({ key, dir: s.key === key && s.dir === "asc" ? "desc" : "asc" }));
 
@@ -50,7 +52,7 @@ export default function DataTable({
           <tr key={i}>
             {columns.map((c) => c.pill
               ? <td key={c.key}><Pill status={r[c.key]} /></td>
-              : <td key={c.key} className={c.num ? "num" : ""}>{fmt(r[c.key])}</td>)}
+              : <td key={c.key} className={c.num ? "num" : ""}>{fmt(show(c, r[c.key]))}</td>)}
             {actions && <td className="actions">{actions(r)}</td>}
           </tr>
         ))}
@@ -68,7 +70,7 @@ export default function DataTable({
           </label>
         )}
         {toolbarExtra}
-        <button onClick={() => rows && downloadCsv(name, columns, visible)}>Export CSV</button>
+        <button onClick={() => rows && downloadCsv(name, columns, visible.map((r) => Object.fromEntries(columns.map((c) => [c.key, show(c, r[c.key])]))))}>Export CSV</button>
       </div>
       <div className="table-wrap">{content}</div>
     </>

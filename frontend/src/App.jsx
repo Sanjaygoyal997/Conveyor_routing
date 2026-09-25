@@ -176,12 +176,12 @@ export default function App() {
     return (
       <DataTable key={name} name={name} rows={withNames(name === "running" ? running : results?.[name])} columns={def.columns}
         statusKey={def.statusKey} issueFilter={def.issueFilter} issuesLabel={def.issuesLabel} placeholder={def.placeholder}
-        emptyText={EMPTY[name]} actions={(row) => rowActions(name, row, ctx)} {...extra} />
+        emptyText={EMPTY[name]} rimLabel={ctx.rimLabel} actions={(row) => rowActions(name, row, ctx)} {...extra} />
     );
   };
 
   const dialogTitle = dialog && (dialog.kind === "material" ? `Material ${dialog.materialId}`
-    : dialog.kind === "equipment" ? eqLabel(dialog.equipmentId) : `Rim ${dialog.rimKey}`);
+    : dialog.kind === "equipment" ? eqLabel(dialog.equipmentId) : `Rim ${ctx.rimLabel(dialog.rimKey)}`);
 
   return (
     <AppContext.Provider value={ctx}>

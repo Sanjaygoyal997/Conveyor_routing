@@ -8,9 +8,9 @@ export const TABLES = {
       { key: "status", label: "Status", pill: true },
       { key: "material_id", label: "Material", num: true },
       { key: "wip_tires", label: "WIP tires", num: true },
-      { key: "allowed_rim_sizes", label: "Allowed rims" },
-      { key: "running_rim_sizes", label: "Rims running" },
-      { key: "inactive_rim_sizes", label: "Inactive rims" },
+      { key: "allowed_rim_sizes", label: "Allowed rims", rim: true },
+      { key: "running_rim_sizes", label: "Rims running", rim: true },
+      { key: "inactive_rim_sizes", label: "Inactive rims", rim: true },
       { key: "eligible_equipment", label: "Eligible equipment" },
       { key: "curing_presses", label: "Curing presses" },
       { key: "first_cured", label: "First cured" },
@@ -24,11 +24,11 @@ export const TABLES = {
       { key: "status", label: "Status", pill: true },
       { key: "equipment_id", label: "Machine", num: true },
       { key: "equipment_name", label: "Name" },
-      { key: "running_rim", label: "Running rim" },
+      { key: "running_rim", label: "Running rim", rim: true },
       { key: "rim_status", label: "Rim", pill: true },
       { key: "wip_tires_fit", label: "WIP tires fit", num: true },
       { key: "only_here_tires", label: "Only here", num: true },
-      { key: "suggested_rim", label: "Suggested rim" },
+      { key: "suggested_rim", label: "Suggested rim", rim: true },
       { key: "unblocks_tires", label: "Kept off exit", num: true },
       { key: "blocks_tires", label: "Blocks", num: true },
       { key: "message", label: "Message" },
@@ -38,7 +38,7 @@ export const TABLES = {
     placeholder: "Filter rim size, status…",
     columns: [
       { key: "status", label: "Status", pill: true },
-      { key: "rim_size", label: "Rim size" },
+      { key: "rim_size", label: "Rim size", rim: true },
       { key: "wip_tires", label: "WIP tires accepting", num: true },
       { key: "blocked_tires", label: "To exit conveyor", num: true },
       { key: "materials", label: "Materials" },
@@ -64,8 +64,7 @@ export const TABLES = {
     columns: [
       { key: "equipment_id", label: "Equipment", num: true },
       { key: "equipment_name", label: "Name" },
-      { key: "rim_name", label: "Running rim" },
-      { key: "rim_size", label: "rim_id" },
+      { key: "rim_name", label: "Running rim", rim: true },
       { key: "rim_area", label: "Rim area" },
       { key: "rim_master_status", label: "Status", pill: true },
       { key: "created_by", label: "Set by" },
@@ -84,7 +83,7 @@ const Btn = ({ primary, onClick, children }) => (
 
 // ctx: the AppContext value
 export function rowActions(table, row, ctx) {
-  const { openQuickFix, openDialog, write, impact, eqLabel } = ctx;
+  const { openQuickFix, openDialog, write, impact, eqLabel, rimLabel } = ctx;
   switch (table) {
     case "recipes":
       return <Btn primary={row.status !== "OK"} onClick={() => openQuickFix({ recipe: String(row.material_id) })}>
@@ -111,7 +110,7 @@ export function rowActions(table, row, ctx) {
       if (c === "MSL_DUPLICATE_ROW") {
         return <Btn primary onClick={() => write("POST", "/api/fix/material-rim/dedupe",
           { material_id: f.material_id, area_id: f.area_id, rim_size: f.rim_size },
-          `Remove duplicate rows for material ${f.material_id}, rim ${f.rim_size}?`,
+          `Remove duplicate rows for material ${f.material_id}, rim ${rimLabel(f.rim_size)}?`,
           `Keeps row ${f.row_ids[0]} and deletes ${f.row_ids.slice(1).join(", ")}.`)}>Remove duplicates</Btn>;
       }
       return <span className="hint" title="Fix this in the source system">—</span>;
@@ -121,8 +120,8 @@ export function rowActions(table, row, ctx) {
     case "machines":
       return <>
         {row.suggested_rim && <><Btn primary onClick={() => write("PUT", `/api/fix/running/${row.equipment_id}`,
-          { rim_id: row.suggested_rim_id }, `Change ${eqLabel(row.equipment_id, "machine")} to rim ${row.suggested_rim}?`,
-          impact(row.equipment_id, row.suggested_rim))}>Apply → {row.suggested_rim}</Btn>{" "}</>}
+          { rim_id: row.suggested_rim_id }, `Change ${eqLabel(row.equipment_id, "machine")} to rim ${rimLabel(row.suggested_rim)}?`,
+          impact(row.equipment_id, row.suggested_rim))}>Apply → {rimLabel(row.suggested_rim)}</Btn>{" "}</>}
         <Btn onClick={() => openQuickFix({ eq: row.equipment_id })}>Set rim…</Btn>
       </>;
     default:

@@ -90,7 +90,7 @@ function MachineCard() {
         {sugg.length ? <>Suggested: {sugg.map((x) => (
           <button key={x.equipment_id} className="sm fixbtn"
             onClick={() => setQfSel((s) => ({ ...s, eq: String(x.equipment_id), wantRim: String(x.suggested_rim_id) }))}>
-            {eqLabel(x.equipment_id, label)} → {x.suggested_rim} (keeps {x.unblocks_tires} off exit)</button>))}</>
+            {eqLabel(x.equipment_id, label)} → {rimLabel(x.suggested_rim)} (keeps {x.unblocks_tires} off exit)</button>))}</>
           : <span className="hint">No changeover needed for the current WIP.</span>}
       </div>
       <label className="qf-field">1. Select DBM
@@ -110,7 +110,7 @@ function MachineCard() {
           {m.master_area ? ` (registered there as ${m.master_area})` : ""}.</p>}
         {!id ? <p className="hint">Enter the DBM number.</p>
           : chk ? <p><Pill status={chk.status} /> {chk.message}</p>
-          : m ? <p><Pill status={m.rim_status} /> Running {m.running_rim ?? "no rim"}.
+          : m ? <p><Pill status={m.rim_status} /> Running {m.running_rim ? rimLabel(m.running_rim) : "no rim"}.
               {m.last_balanced ? ` Last balanced ${fmt(m.last_balanced)} (${m.tires_balanced} tires in 30 days).` : ""}</p>
           : <p className="hint">New DBM {id}: no rim set yet.</p>}
       </div>
@@ -231,10 +231,10 @@ function MaterialCard() {
               <span key={m.id} className={`chip${bad ? " bad" : ""}`} title={bad ? "Inactive in rim_master" : "Active"}>
                 <button className="link chip-name" title="Change this rim" onClick={() => setFromSel(String(m.id))}>{rimLabel(m.rim_name)}</button>
                 {bad && m.rim_id != null && <button className="link" disabled={dis}
-                  onClick={() => write("POST", `/api/fix/rim/${m.rim_id}/activate`, null, `Reactivate rim ${m.rim_name}?`,
+                  onClick={() => write("POST", `/api/fix/rim/${m.rim_id}/activate`, null, `Reactivate rim ${rimLabel(m.rim_name)}?`,
                     "Sets rim_master.isactive = true. It affects every material and machine using this rim.")}>reactivate</button>}
                 <button className="link" aria-label={`Remove ${m.rim_name}`} disabled={dis}
-                  onClick={() => write("DELETE", `/api/fix/material-rim/${m.id}`, null, `Remove rim ${m.rim_name} from material ${r.material_id}?`,
+                  onClick={() => write("DELETE", `/api/fix/material-rim/${m.id}`, null, `Remove rim ${rimLabel(m.rim_name)} from material ${r.material_id}?`,
                     `Deletes material_size_lookup row ${m.id}.`)}>✕</button>
               </span>
             );

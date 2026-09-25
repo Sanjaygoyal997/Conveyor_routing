@@ -10,7 +10,7 @@ const reactivateDetail = "Sets rim_master.isactive = true. It affects every mate
 
 // ---- material: mapped rims, add rim, change over a DBM ---------------------------
 export function MaterialDialog({ materialId, context = {} }) {
-  const { version, filters, areaName, lookups, results, activeRims, rimFor, config, write, impact, eqLabel } = useApp();
+  const { version, filters, areaName, lookups, results, activeRims, rimFor, config, write, impact, eqLabel, rimLabel } = useApp();
   const [maps, setMaps] = useState(null);
   const [err, setErr] = useState("");
   const [areaInputs, setAreaInputs] = useState({});
@@ -78,14 +78,14 @@ export function MaterialDialog({ materialId, context = {} }) {
           <thead><tr><th>Rim</th><th>Area</th><th>Rim master</th><th>Running on</th><th /></tr></thead>
           <tbody>{maps.map((m) => (
             <tr key={m.id}>
-              <td className="m">{m.rim_name} <span className="hint">id {m.rim_size}</span></td>
+              <td className="m">{rimLabel(m.rim_name)}</td>
               <td>{m.area_id ?? "—"}</td>
               <td><Pill status={m.rim_master_status} /></td>
               <td className="m">{fmt(m.equipment_running) || "—"}</td>
               <td className="actions">
                 {m.rim_master_status !== "ACTIVE" && m.rim_id != null &&
                   <button className="sm" disabled={dis} title={dis ? NO_EDIT : undefined}
-                    onClick={() => write("POST", `/api/fix/rim/${m.rim_id}/activate`, null, `Reactivate rim ${m.rim_name}?`, reactivateDetail)}>
+                    onClick={() => write("POST", `/api/fix/rim/${m.rim_id}/activate`, null, `Reactivate rim ${rimLabel(m.rim_name)}?`, reactivateDetail)}>
                     Reactivate rim</button>}
                 {m.area_id == null && <>
                   <input className="sm num" type="number" placeholder="area" aria-label="Area"
@@ -94,7 +94,7 @@ export function MaterialDialog({ materialId, context = {} }) {
                   <button className="sm" disabled={dis} onClick={() => doArea(m)}>Set area</button>
                 </>}
                 <button className="sm danger" disabled={dis}
-                  onClick={() => write("DELETE", `/api/fix/material-rim/${m.id}`, null, `Remove rim ${m.rim_name} from material ${materialId}?`,
+                  onClick={() => write("DELETE", `/api/fix/material-rim/${m.id}`, null, `Remove rim ${rimLabel(m.rim_name)} from material ${materialId}?`,
                     `Deletes material_size_lookup row ${m.id}.`)}>Remove</button>
               </td>
             </tr>))}
@@ -128,7 +128,7 @@ export function MaterialDialog({ materialId, context = {} }) {
 
 // ---- equipment: set running rim ---------------------------------------------------
 export function EquipmentDialog({ equipmentId }) {
-  const { lookups, results, activeRims, config, write, impact, eqLabel } = useApp();
+  const { lookups, results, activeRims, config, write, impact, eqLabel, rimLabel } = useApp();
   const e = lookups.running.find((x) => String(x.equipment_id) === String(equipmentId));
   const cur = e?.rim_name ?? null;
   const d = cur && (results?.rims || []).find((x) => x.rim_size === cur);
@@ -143,7 +143,7 @@ export function EquipmentDialog({ equipmentId }) {
   };
   return (
     <>
-      <p className="dlg-status">Running rim <b className="m">{e?.rim_name ?? "not set"}</b> <Pill status={e?.rim_master_status || "NOT SET"} />
+      <p className="dlg-status">Running rim <b className="m">{e?.rim_name ? rimLabel(e.rim_name) : "not set"}</b> <Pill status={e?.rim_master_status || "NOT SET"} />
         {d ? ` · ${d.wip_tires} WIP tires accept this rim` : ""}</p>
       <h4>Set running rim</h4>
       <div className="form-row">
@@ -157,7 +157,7 @@ export function EquipmentDialog({ equipmentId }) {
 
 // ---- rim: who runs it, change over equipment to it ------------------------------------
 export function RimDialog({ rimKey }) {
-  const { lookups, results, rimFor, config, write, impact, openDialog, eqLabel } = useApp();
+  const { lookups, results, rimFor, config, write, impact, openDialog, eqLabel, rimLabel } = useApp();
   const rim = rimFor(rimKey), anyRim = rimFor(rimKey, { activeOnly: false });
   const d = (results?.rims || []).find((x) => x.rim_size === rimKey);
   const runningOn = lookups.running.filter((e) => e.rim_name === rimKey);
@@ -170,7 +170,7 @@ export function RimDialog({ rimKey }) {
       <p className="dlg-status"><Pill status={rim ? "ACTIVE" : "INACTIVE"} />
         {d ? ` ${d.wip_tires} WIP tires accept this rim, ${d.blocked_tires} to exit conveyor` : " No WIP tires accept this rim"}</p>
       {!rim && anyRim && <p><button className="sm" disabled={dis}
-        onClick={() => write("POST", `/api/fix/rim/${anyRim.rim_id}/activate`, null, `Reactivate rim ${rimKey}?`, reactivateDetail)}>
+        onClick={() => write("POST", `/api/fix/rim/${anyRim.rim_id}/activate`, null, `Reactivate rim ${rimLabel(rimKey)}?`, reactivateDetail)}>
         Reactivate rim {anyRim.name}</button></p>}
       {!!(d?.materials || []).length && <>
         <h4>Materials in WIP</h4>
@@ -190,7 +190,7 @@ export function RimDialog({ rimKey }) {
             {others.map((e) => <option key={e.equipment_id} value={e.equipment_id}>{eqLabel(e.equipment_id)}</option>)}
           </select>
           <button className="primary" disabled={dis || !eqSel}
-            onClick={() => write("PUT", `/api/fix/running/${eqSel}`, { rim_id: rim.rim_id }, `Change ${eqLabel(eqSel)} to rim ${rimKey}?`,
+            onClick={() => write("PUT", `/api/fix/running/${eqSel}`, { rim_id: rim.rim_id }, `Change ${eqLabel(eqSel)} to rim ${rimLabel(rimKey)}?`,
               impact(eqSel, rimKey))}>Change over</button>
         </div>
       </>}

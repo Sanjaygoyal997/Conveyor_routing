@@ -15,11 +15,11 @@ export default function AuditLog() {
   }, []);
   useEffect(load, [load, version]);
 
-  // rim_size holds a rim_id: show it as "R20225 (1)"
+  // rim_size holds a rim_id: show the rim name
   const showVal = (k, v) => {
     if (k !== "rim_size" || v == null) return v;
     const r = lookups.rims.find((x) => String(x.rim_id) === String(v).trim());
-    return r ? `${r.name} (${v})` : v;
+    return r ? r.name : v;
   };
   const diff = (before, after) => {
     const keys = [...new Set([...Object.keys(before || {}), ...Object.keys(after || {})])]

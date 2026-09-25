@@ -14,7 +14,7 @@ function MiniTable({ rows, cols }) {
 }
 
 export default function BarcodeCheck() {
-  const { filters } = useApp();
+  const { filters, rimLabel } = useApp();
   const [code, setCode] = useState("");
   const [equipment, setEquipment] = useState("");
   const [result, setResult] = useState(null);
@@ -47,7 +47,7 @@ export default function BarcodeCheck() {
     const ok = v.length > 0 && v.every((x) => x.status === "OK");
     const first = v[0] || {};
     const equipmentOk = v.filter((x) => x.status === "OK" && x.equipment_id != null).map((x) => x.equipment_id);
-    const rims = [...new Set(v.map((x) => x.rim_size).filter(Boolean))].join(", ");
+    const rims = [...new Set(v.map((x) => x.rim_size).filter(Boolean))].map(rimLabel).join(", ");
     // no DBM fits -> the conveyor sends the tire to the exit conveyor (with a target DBM, NG only means "not this one")
     const headline = ok ? (equipmentOk.length ? `OK: can go to equipment ${equipmentOk.join(", ")}` : "OK")
       : `${first.status}${targeted ? " (not this DBM)" : " → exit conveyor"}`;

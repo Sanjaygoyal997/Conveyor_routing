@@ -155,7 +155,7 @@ namespace ConveyorRouting.Api.Repositories
                 var rim = ActiveRim(c, t, rimId, null);
                 if (eq != null && rim["local_area_id"] != null && !Equals(rim["local_area_id"], eq["local_area_id"]))
                     throw new FixException(409, $"Equipment {equipmentId} ({eq["name"]}) is a {eq["area_name"] ?? "area " + eq["local_area_id"]} machine; " +
-                                                $"rim {rim["name"]} (rim_id {rim["rim_id"]}) belongs to area {rim["local_area_id"]}");
+                                                $"rim {rim["name"]} belongs to area {rim["local_area_id"]}");
                 var before = One(_db.Rows(c, t, "SELECT to_jsonb(t.*) AS j FROM master.runningsize_lookup t WHERE t.equipment_id = @e FOR UPDATE",
                     Sql.Int("e", equipmentId)));
                 var row = One(_db.Rows(c, t, @"INSERT INTO master.runningsize_lookup AS t (equipment_id, rim_size, created_by, dtandtime)
