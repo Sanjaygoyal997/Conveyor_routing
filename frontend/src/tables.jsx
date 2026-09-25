@@ -22,8 +22,7 @@ export const TABLES = {
     placeholder: "Filter machine, rim, status…",
     columns: [
       { key: "status", label: "Status", pill: true },
-      { key: "equipment_id", label: "Machine", num: true },
-      { key: "equipment_name", label: "Name" },
+      { key: "machine", label: "Machine" },
       { key: "running_rim", label: "Running rim", rim: true },
       { key: "rim_status", label: "Rim", pill: true },
       { key: "wip_tires_fit", label: "WIP tires fit", num: true },
@@ -62,8 +61,7 @@ export const TABLES = {
     placeholder: "Filter equipment, rim…",
     statusKey: "rim_master_status",
     columns: [
-      { key: "equipment_id", label: "Equipment", num: true },
-      { key: "equipment_name", label: "Name" },
+      { key: "machine", label: "Equipment" },
       { key: "rim_name", label: "Running rim", rim: true },
       { key: "rim_area", label: "Rim area" },
       { key: "rim_master_status", label: "Status", pill: true },

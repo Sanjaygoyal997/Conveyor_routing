@@ -154,7 +154,7 @@ namespace ConveyorRouting.Api.Repositories
                     Sql.Int("e", equipmentId)));
                 var rim = ActiveRim(c, t, rimId, null);
                 if (eq != null && rim["local_area_id"] != null && !Equals(rim["local_area_id"], eq["local_area_id"]))
-                    throw new FixException(409, $"Equipment {equipmentId} ({eq["name"]}) is a {eq["area_name"] ?? "area " + eq["local_area_id"]} machine; " +
+                    throw new FixException(409, $"{eq["name"]} is a {eq["area_name"] ?? "area " + eq["local_area_id"]} machine; " +
                                                 $"rim {rim["name"]} belongs to area {rim["local_area_id"]}");
                 var before = One(_db.Rows(c, t, "SELECT to_jsonb(t.*) AS j FROM master.runningsize_lookup t WHERE t.equipment_id = @e FOR UPDATE",
                     Sql.Int("e", equipmentId)));
@@ -165,7 +165,7 @@ namespace ConveyorRouting.Api.Repositories
                                                RETURNING to_jsonb(t.*) AS after",
                     Sql.Int("e", equipmentId), Sql.Text("v", RimValue(rim)), Sql.Text("u", user)));
                 Audit(c, t, user, "set_running_rim", "runningsize_lookup", $"equipment_id={equipmentId}", before?["j"], row["after"]);
-                return $"Equipment {equipmentId}{(eq != null ? $" ({eq["name"]})" : "")} now running rim {rim["name"]}";
+                return $"{(eq != null ? eq["name"] : $"Equipment {equipmentId}")} now running rim {rim["name"]}";
             });
 
         // ---- rim_master -----------------------------------------------------------

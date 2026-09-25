@@ -138,8 +138,10 @@ export default function App() {
   // machine names from master.equipment_master (local_equipment_id = equipment_id)
   const eqNames = useMemo(() => new Map(lookups.equipment.map((e) => [e.equipment_id, e.name])), [lookups.equipment]);
   const eqName = (id) => eqNames.get(Number(id)) ?? null;
-  const eqLabel = (id, prefix = "Equipment") => (eqName(id) ? `${eqName(id)} (${id})` : `${prefix} ${id}`);
-  const withNames = (rows) => rows && rows.map((r) => (r.equipment_id != null ? { ...r, equipment_name: eqName(r.equipment_id) } : r));
+  // machines are shown by name; the id only when equipment_master has no name for it
+  const eqLabel = (id, prefix = "Equipment") => eqName(id) ?? `${prefix} ${id}`;
+  const ctx_rimLabel = (key) => (key == null ? null : lookups.rims.find((r) => r.rim_key === key)?.name ?? key);
+  const withNames = (rows) => rows && rows.map((r) => (r.equipment_id != null ? { ...r, machine: eqLabel(r.equipment_id, "") .trim() } : r));
 
   const ctx = {
     // no area selected (area list empty or not loaded): the API validates for DBM, so the page does too
@@ -149,8 +151,8 @@ export default function App() {
     results, lookups, version, activeRims,
     rimFor: (key, { activeOnly = true } = {}) =>
       lookups.rims.filter((r) => (r.rim_key === key || String(r.rim_id) === key) && (!activeOnly || r.isactive)).find(inArea) || null,
-    rimLabel: (key) => (key == null ? null : lookups.rims.find((r) => r.rim_key === key)?.name ?? key),
-    impact: (eq, rimName) => changeoverImpact(eq, rimName, lookups.running, results?.recipes || []),
+    rimLabel: ctx_rimLabel,
+    impact: (eq, rimName) => changeoverImpact(eq, rimName, lookups.running, results?.recipes || [], (id) => eqLabel(id), ctx_rimLabel),
     write,
     openDialog: (d) => { loadLookups().catch(() => {}); setDialog(d); },
     openQuickFix: ({ recipe, eq } = {}) => {

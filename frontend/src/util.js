@@ -32,7 +32,7 @@ export const store = {
 };
 
 // What a changeover would do to the current WIP (from the last validation run).
-export function changeoverImpact(equipmentId, newRimName, running, recipes) {
+export function changeoverImpact(equipmentId, newRimName, running, recipes, label = (id) => `Equipment ${id}`, rimLabel = (k) => k) {
   const eq = +equipmentId, newKey = newRimName == null ? null : String(newRimName).trim().toUpperCase();
   const cur = running.find((e) => e.equipment_id === eq);
   const hasActive = (r) => !["NG_NO_MATERIAL_SIZE", "NG_NO_ACTIVE_RIM"].includes(r.status);
@@ -40,10 +40,10 @@ export function changeoverImpact(equipmentId, newRimName, running, recipes) {
     : newKey !== "NONE" && (r.allowed_rim_sizes || []).includes(newKey) && !(r.inactive_rim_sizes || []).includes(newKey);
   const lost = recipes.filter((r) => (r.eligible_equipment || []).length === 1 && r.eligible_equipment[0] === eq && !fits(r));
   const gained = recipes.filter((r) => !(r.eligible_equipment || []).length && fits(r));
-  const parts = [`Equipment ${eq} is running ${cur?.rim_name ?? "nothing"} now.`];
+  const parts = [`${label(eq)} is running ${cur?.rim_name ? rimLabel(cur.rim_name) : "nothing"} now.`];
   if (gained.length) parts.push(`Keeps ${tires(gained)} WIP tire(s) off the exit conveyor: material ${gained.map((r) => r.material_id).join(", ")}.`);
   parts.push(lost.length
-    ? `Sends ${tires(lost)} WIP tire(s) to the exit conveyor (they can only go to ${eq}): material ${lost.map((r) => r.material_id).join(", ")}.`
+    ? `Sends ${tires(lost)} WIP tire(s) to the exit conveyor (they can only go to ${label(eq)}): material ${lost.map((r) => r.material_id).join(", ")}.`
     : "No WIP tire goes to the exit conveyor because of this change.");
   return parts.join(" ");
 }

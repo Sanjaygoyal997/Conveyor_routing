@@ -185,7 +185,7 @@ try:
     r = c.put("/api/fix/running/601", json={"rim_id": 1}, headers=H)
     check("API: DBM rim on a TUO machine (equipment_master) -> 409", (r.status_code, "TUO machine" in r.body["message"]), (409, True))
     r = c.put("/api/fix/running/507", json={"rim_id": 1}, headers=H)
-    check("API: rim on idle DBM 507 from equipment_master", r.json()["message"], "Equipment 507 (DBM-07) now running rim R20225")
+    check("API: rim on idle DBM 507 from equipment_master", r.json()["message"], "DBM-07 now running rim R20225")
 
     # -- machine check: after 504 went to R225245 nothing is blocked any more -> no suggestions
     machines = {m["equipment_id"]: m for m in c.get("/api/wip/machines", params={"wip_states": "1"}).json()}
