@@ -37,15 +37,7 @@ prod AS (
 ),
 findings AS (
     -- material_size_lookup ---------------------------------------------------
-    -- (several rim sizes per material are allowed; only real defects are flagged)
-    SELECT 'INFO', 'MSL_MULTI_RIM', 'material_size_lookup',
-           'material_id=' || material_id || ', area_id=' || COALESCE(area_id::text, 'NULL'),
-           'Accepts rim sizes ' || string_agg(DISTINCT rim_key, ','),
-           jsonb_build_object('material_id', material_id, 'area_id', area_id)
-    FROM   msl GROUP BY material_id, area_id
-    HAVING count(DISTINCT rim_key) > 1
-
-    UNION ALL
+    -- (several rim sizes per material are allowed and not listed; only real defects are flagged)
     SELECT 'WARN', 'MSL_DUPLICATE_ROW', 'material_size_lookup',
            'material_id=' || material_id || ', area_id=' || COALESCE(area_id::text, 'NULL'),
            count(*) || ' rows for rim ' || rim_key || ' (ids ' || string_agg(id::text, ',' ORDER BY id) || ')',

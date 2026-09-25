@@ -242,7 +242,7 @@ Rim sizes are always created in `rim_master` before they can be mapped, so a rim
 the only case checked is a rim made **inactive** after it was mapped.
 
 In the gap report, an inactive rim is an **ERROR** only when the material has no other
-active rim; otherwise it is a **WARN**. `MSL_MULTI_RIM` (INFO) lists materials that accept several rims.
+active rim; otherwise it is a **WARN**. A material that accepts several rims is normal and is not listed.
 
 ## Assumptions / open points
 
