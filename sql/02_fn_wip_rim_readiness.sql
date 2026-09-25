@@ -62,8 +62,10 @@ wip AS (
     SELECT * FROM latest l
     WHERE  (p_wip_states IS NULL OR l.state = ANY (p_wip_states))
       AND  (p_ok_quality IS NULL OR l.quality_status = ANY (p_ok_quality))
-      AND  NOT (p_exclude_at_dbm AND EXISTS (
-                  SELECT 1 FROM dbm.o_production d WHERE d.barcode = l.production_id))
+      -- a plain NOT EXISTS (flag inside the subquery) is planned as one anti-join; wrapped in
+      -- NOT (flag AND EXISTS ...) it ran once per WIP tire over the whole DBM history
+      AND  NOT EXISTS (SELECT 1 FROM dbm.o_production d
+                       WHERE p_exclude_at_dbm AND d.barcode = l.production_id)
 ),
 grp AS (
     SELECT w.material_id,
